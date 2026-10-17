@@ -1,0 +1,271 @@
+@import url('https://fonts.googleapis.com/css2?family=Cinzel:wght@500;600;700;800;900&family=Outfit:wght@300;400;500;600;700;800&family=Playfair+Display:ital,wght@0,600;0,700;1,600&display=swap');
+
+:root {
+  --font-heading: 'Cinzel', serif;
+  --font-serif: 'Playfair Display', serif;
+  --font-sans: 'Outfit', sans-serif;
+
+  /* White-based luxury color palette */
+  --bg-primary: #FCFCFA;
+  --bg-secondary: #F6F5F0;
+  --bg-card: #FFFFFF;
+  --bg-card-hover: #FFFDF8;
+  
+  /* Gold Accents */
+  --gold-primary: #D4AF37;
+  --gold-dark: #B58D20;
+  --gold-light: #F9E79F;
+  --gold-ultra-light: #FDF9EC;
+  --gold-gradient: linear-gradient(135deg, #E5C365 0%, #C59B27 50%, #9E7814 100%);
+  --gold-gradient-soft: linear-gradient(135deg, #FBF4DE 0%, #F5E5BE 100%);
+  --gold-glow: 0 8px 25px -4px rgba(212, 175, 55, 0.35);
+  --gold-border: rgba(212, 175, 55, 0.32);
+  --gold-border-subtle: rgba(212, 175, 55, 0.18);
+
+  /* Slightly Black / Obsidian Accents */
+  --black-primary: #121418;
+  --black-secondary: #22262E;
+  --black-soft: #383F4C;
+  --black-gradient: linear-gradient(135deg, #1A1D24 0%, #0D0F12 100%);
+
+  /* Text & Neutral */
+  --text-main: #18191B;
+  --text-muted: #646875;
+  --text-light: #9499A8;
+  --text-gold: #C59B27;
+  --border-light: #EBE8DE;
+  
+  /* Status Colors */
+  --success: #10B981;
+  --success-bg: #ECFDF5;
+  --warning: #F59E0B;
+  --warning-bg: #FFFBEB;
+  --danger: #EF4444;
+  --danger-bg: #FEF2F2;
+  --info: #3B82F6;
+  --info-bg: #EFF6FF;
+
+  --radius-sm: 8px;
+  --radius-md: 14px;
+  --radius-lg: 20px;
+  --radius-full: 9999px;
+
+  --shadow-sm: 0 2px 8px rgba(28, 25, 23, 0.04);
+  --shadow-md: 0 8px 20px rgba(28, 25, 23, 0.06), 0 2px 6px rgba(212, 175, 55, 0.08);
+  --shadow-lg: 0 16px 36px rgba(28, 25, 23, 0.09), 0 6px 14px rgba(212, 175, 55, 0.12);
+  --shadow-gold: 0 10px 30px rgba(197, 155, 39, 0.28);
+}
+
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+body {
+  font-family: var(--font-sans);
+  background-color: var(--bg-primary);
+  color: var(--text-main);
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  overflow-x: hidden;
+}
+
+/* Custom Scrollbars */
+::-webkit-scrollbar {
+  width: 7px;
+  height: 7px;
+}
+::-webkit-scrollbar-track {
+  background: #F4F1E8;
+}
+::-webkit-scrollbar-thumb {
+  background: #D8C38B;
+  border-radius: 999px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: var(--gold-dark);
+}
+
+/* Glassmorphism & Gold Styling */
+.glass-panel {
+  background: rgba(255, 255, 255, 0.88);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+  border: 1px solid var(--gold-border-subtle);
+  box-shadow: var(--shadow-md);
+}
+
+.gold-gradient-text {
+  background: var(--gold-gradient);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+.gold-gradient-btn {
+  background: var(--gold-gradient);
+  color: #FFFFFF;
+  box-shadow: 0 4px 15px rgba(197, 155, 39, 0.35);
+  transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+  font-weight: 600;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  border: none;
+  cursor: pointer;
+}
+.gold-gradient-btn:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 8px 24px rgba(197, 155, 39, 0.48);
+}
+.gold-gradient-btn:active {
+  transform: translateY(0);
+}
+
+.black-luxury-btn {
+  background: var(--black-gradient);
+  color: #FFFDF6;
+  border: 1px solid rgba(212, 175, 55, 0.3);
+  box-shadow: 0 4px 14px rgba(18, 20, 24, 0.25);
+  transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+  font-weight: 600;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  cursor: pointer;
+}
+.black-luxury-btn:hover {
+  background: #252A34;
+  border-color: var(--gold-primary);
+  transform: translateY(-2px);
+  box-shadow: 0 6px 20px rgba(18, 20, 24, 0.35);
+}
+
+.gold-outline-btn {
+  background: #FFFFFF;
+  color: var(--gold-dark);
+  border: 1.5px solid var(--gold-primary);
+  transition: all 0.2s ease;
+  font-weight: 600;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+}
+.gold-outline-btn:hover {
+  background: var(--gold-ultra-light);
+  border-color: var(--gold-dark);
+  color: #926C0D;
+}
+
+/* Luxury Card Hover Effect */
+.luxury-card {
+  background: #FFFFFF;
+  border: 1px solid var(--gold-border-subtle);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-sm);
+  transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+  position: relative;
+  overflow: hidden;
+}
+.luxury-card:hover {
+  transform: translateY(-3px);
+  box-shadow: var(--shadow-md);
+  border-color: var(--gold-border);
+}
+
+.luxury-card::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 3px;
+  background: var(--gold-gradient);
+  opacity: 0;
+  transition: opacity 0.3s ease;
+}
+.luxury-card:hover::before {
+  opacity: 1;
+}
+
+/* Gold Shimmer effect for banners */
+@keyframes shimmer {
+  0% { transform: translateX(-100%); }
+  100% { transform: translateX(100%); }
+}
+
+.shimmer-badge {
+  position: relative;
+  overflow: hidden;
+}
+.shimmer-badge::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.4), transparent);
+  animation: shimmer 2.5s infinite;
+}
+
+/* Animations */
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.animate-fade-in {
+  animation: fadeIn 0.35s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+@keyframes pulseGlow {
+  0%, 100% { box-shadow: 0 0 15px rgba(212, 175, 55, 0.2); }
+  50% { box-shadow: 0 0 25px rgba(212, 175, 55, 0.45); }
+}
+
+.pulse-gold {
+  animation: pulseGlow 3s infinite ease-in-out;
+}
+
+/* Modal Backdrop */
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(14, 16, 20, 0.7);
+  backdrop-filter: blur(6px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+  padding: 1.5rem 1rem;
+  overflow-y: auto;
+}
+
+/* Print Invoice Styles */
+@media print {
+  body * {
+    visibility: hidden;
+  }
+  #printable-receipt, #printable-receipt * {
+    visibility: visible;
+  }
+  #printable-receipt {
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 100%;
+    margin: 0;
+    padding: 20px;
+    box-shadow: none;
+    border: none;
+  }
+  .no-print {
+    display: none !important;
+  }
+}
