@@ -7,7 +7,8 @@ import {
   INITIAL_PACKAGES,
   INITIAL_CUSTOMERS,
   INITIAL_BILLS,
-  INITIAL_ATTENDANCE_LOGS
+  INITIAL_ATTENDANCE_LOGS,
+  INITIAL_NOTIFICATIONS
 } from '../data/initialData';
 
 const SaloonContext = createContext();
@@ -16,7 +17,18 @@ export function SaloonProvider({ children }) {
   // Load from localStorage or use initial data
   const [employees, setEmployees] = useState(() => {
     const saved = localStorage.getItem('saloon_employees');
-    return saved ? JSON.parse(saved) : INITIAL_EMPLOYEES;
+    if (!saved) return INITIAL_EMPLOYEES;
+    try {
+      const parsed = JSON.parse(saved);
+      if (Array.isArray(parsed)) {
+        const hasAnanya = parsed.some(e => e.name?.toLowerCase().includes('ananya sen'));
+        if (!hasAnanya) return INITIAL_EMPLOYEES;
+        return parsed;
+      }
+    } catch (e) {
+      console.error(e);
+    }
+    return INITIAL_EMPLOYEES;
   });
 
   const [services, setServices] = useState(() => {
@@ -41,10 +53,24 @@ export function SaloonProvider({ children }) {
     if (!saved) return INITIAL_PRODUCTS;
     try {
       const parsed = JSON.parse(saved);
+      if (Array.isArray(parsed) && !parsed.some(p => p.name && p.name.includes('O3+'))) {
+        const o3 = INITIAL_PRODUCTS.find(p => p.name && p.name.includes('O3+'));
+        if (o3) parsed.push(o3);
+      }
       return parsed.map(p => {
         const init = INITIAL_PRODUCTS.find(ip => ip.id === p.id || ip.name.toLowerCase() === p.name.toLowerCase());
+        const sellingPrice = p.sellingPrice || p.price || init?.sellingPrice || 390;
         return {
+          ...init,
           ...p,
+          sku: p.sku || init?.sku || `SKU-${p.id.toUpperCase()}`,
+          barcode: p.barcode || init?.barcode || '3490720002501',
+          purchasePrice: p.purchasePrice !== undefined ? p.purchasePrice : (init?.purchasePrice || Math.round(sellingPrice * 0.65)),
+          mrp: p.mrp !== undefined ? p.mrp : (init?.mrp || 0),
+          sellingPrice: sellingPrice,
+          price: sellingPrice,
+          lowStockLimit: p.lowStockLimit || init?.lowStockLimit || 5,
+          supplierName: p.supplierName || init?.supplierName || 'General Salon Distributor',
           image: p.image || init?.image || '/images/products/argan_hair_oil.jpg'
         };
       });
@@ -65,17 +91,82 @@ export function SaloonProvider({ children }) {
 
   const [customers, setCustomers] = useState(() => {
     const saved = localStorage.getItem('saloon_customers');
-    return saved ? JSON.parse(saved) : INITIAL_CUSTOMERS;
+    let list = saved ? JSON.parse(saved) : INITIAL_CUSTOMERS;
+    if (!list.some(c => c.phone === '9876500456')) {
+      const initial5 = INITIAL_CUSTOMERS.slice(0, 5);
+      list = [...initial5, ...list.filter(c => !initial5.some(i => i.phone === c.phone))];
+    } else {
+      // Ensure email & gender exist
+      list = list.map(c => {
+        const match = INITIAL_CUSTOMERS.find(i => i.phone === c.phone || i.name === c.name);
+        return {
+          ...c,
+          email: c.email || match?.email || '',
+          gender: c.gender || match?.gender || '-'
+        };
+      });
+    }
+    return list;
   });
 
   const [bills, setBills] = useState(() => {
     const saved = localStorage.getItem('saloon_bills');
-    return saved ? JSON.parse(saved) : INITIAL_BILLS;
+    let list = saved ? JSON.parse(saved) : INITIAL_BILLS;
+    if (!list.some(b => b.id === 'INV-1-000006')) {
+      const initialInv = INITIAL_BILLS.filter(b => b.id.startsWith('INV-1-'));
+      list = [...initialInv, ...list.filter(b => !b.id.startsWith('INV-1-'))];
+    }
+    return list;
   });
 
   const [attendanceLogs, setAttendanceLogs] = useState(() => {
     const saved = localStorage.getItem('saloon_attendance_logs');
     return saved ? JSON.parse(saved) : INITIAL_ATTENDANCE_LOGS;
+  });
+
+  const [notifications, setNotifications] = useState(() => {
+    const saved = localStorage.getItem('saloon_notifications');
+    return saved ? JSON.parse(saved) : INITIAL_NOTIFICATIONS;
+  });
+
+  const [receiptSettings, setReceiptSettings] = useState(() => {
+    const defaultSettings = {
+      templateStyle: 'classic',
+      paperWidth: '80mm',
+      showLogo: true,
+      showAddress: true,
+      showPhone: true,
+      showEmail: true,
+      showWebsite: true,
+      showGstin: true,
+      showQrCode: false,
+      autoPrintCheckout: false,
+      parlourName: 'PHOENIX SALOON',
+      tagline: 'HAIR STUDIO & LUXURY SPA',
+      address: '42 Royale Avenue, High Street Plaza',
+      phone: '+91 98450 11223',
+      email: 'concierge@phoenixsaloon.com',
+      website: 'www.phoenixsaloon.com',
+      gstin: '33AAACR2938K1Z5',
+      footerMessage: 'Thank you for visiting. Please visit again.'
+    };
+    const saved = localStorage.getItem('saloon_receipt_settings');
+    let parsed = {};
+    try {
+      parsed = saved ? JSON.parse(saved) : {};
+      if (parsed.parlourName && (parsed.parlourName.toUpperCase().includes('AURA') || parsed.parlourName.toUpperCase().includes('SMARTGONEXT'))) {
+        parsed.parlourName = 'PHOENIX SALOON';
+      }
+      if (parsed.email && parsed.email.toLowerCase().includes('aura')) {
+        parsed.email = 'concierge@phoenixsaloon.com';
+      }
+      if (parsed.website && parsed.website.toLowerCase().includes('aura')) {
+        parsed.website = 'www.phoenixsaloon.com';
+      }
+    } catch (e) {
+      parsed = {};
+    }
+    return { ...defaultSettings, ...parsed, parlourName: parsed.parlourName || 'PHOENIX SALOON' };
   });
 
   const [activeMenu, setActiveMenu] = useState('dashboard');
@@ -114,6 +205,14 @@ export function SaloonProvider({ children }) {
     localStorage.setItem('saloon_attendance_logs', JSON.stringify(attendanceLogs));
   }, [attendanceLogs]);
 
+  useEffect(() => {
+    localStorage.setItem('saloon_notifications', JSON.stringify(notifications));
+  }, [notifications]);
+
+  useEffect(() => {
+    localStorage.setItem('saloon_receipt_settings', JSON.stringify(receiptSettings));
+  }, [receiptSettings]);
+
   const showToast = (message, type = 'success') => {
     setToastMessage({ message, type, id: Date.now() });
     setTimeout(() => {
@@ -122,7 +221,7 @@ export function SaloonProvider({ children }) {
   };
 
   // 1. Customer Actions
-  const addCustomer = ({ name, phone, notes = '' }) => {
+  const addCustomer = ({ name, phone, email = '', gender = '-', notes = '' }) => {
     // Check if phone already exists
     const existing = customers.find(c => c.phone.trim() === phone.trim());
     if (existing) {
@@ -134,10 +233,12 @@ export function SaloonProvider({ children }) {
       id: `cust-${Date.now()}`,
       name: name.trim(),
       phone: phone.trim(),
+      email: email ? email.trim() : '',
+      gender: gender || '-',
       registeredDate: new Date().toISOString().split('T')[0],
       membershipPlan: null,
       membershipExpiry: null,
-      notes: notes.trim(),
+      notes: notes ? notes.trim() : '',
       history: []
     };
 
@@ -146,22 +247,56 @@ export function SaloonProvider({ children }) {
     return newCustomer;
   };
 
+  const updateCustomer = (id, updatedData) => {
+    setCustomers(prev =>
+      prev.map(c => (c.id === id ? { ...c, ...updatedData } : c))
+    );
+    showToast(`Customer updated successfully!`);
+  };
+
+  const deleteCustomer = (id) => {
+    setCustomers(prev => prev.filter(c => c.id !== id));
+    showToast(`Customer removed from directory.`);
+  };
+
   // 2. Employee Actions
-  const addEmployee = ({ name, phone, department }) => {
+  const addEmployee = ({
+    name,
+    firstName,
+    lastName,
+    phone,
+    role,
+    department,
+    specialization,
+    salary,
+    commissionRate,
+    status = 'active',
+    joiningDate
+  }) => {
+    const fullName = name
+      ? name.trim()
+      : `${firstName || ''} ${lastName || ''}`.trim();
     const newEmp = {
       id: `emp-${Date.now()}`,
-      name: name.trim(),
-      phone: phone.trim(),
-      department: department.trim(),
-      joinedDate: new Date().toISOString().split('T')[0],
+      name: fullName || 'Staff Member',
+      firstName: firstName || '',
+      lastName: lastName || '',
+      phone: (phone || '').trim(),
+      role: (role || '').trim() || (department || 'Stylist'),
+      department: department || specialization || role || 'Hair Cut & Styling',
+      specialization: (specialization || '').trim(),
+      salary: salary ? Number(salary) : 0,
+      commissionRate: commissionRate !== undefined && commissionRate !== '' ? Number(commissionRate) : 8,
+      status: status || 'active',
+      joinedDate: joiningDate || new Date().toISOString().split('T')[0],
       avatar: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=300&q=80',
-      presentToday: true,
+      presentToday: status === 'active',
       totalPresentDays: 1,
       totalServiced: 0
     };
 
     setEmployees(prev => [newEmp, ...prev]);
-    
+
     // Add attendance entry for today
     const today = new Date().toISOString().split('T')[0];
     setAttendanceLogs(prev => [
@@ -170,13 +305,38 @@ export function SaloonProvider({ children }) {
         date: today,
         employeeId: newEmp.id,
         employeeName: newEmp.name,
-        status: 'Present'
+        status: status === 'active' ? 'Present' : 'Absent'
       },
       ...prev
     ]);
 
-    showToast(`Employee "${newEmp.name}" added to ${newEmp.department}!`);
+    showToast(`Employee "${newEmp.name}" saved successfully!`);
     return newEmp;
+  };
+
+  const updateEmployee = (id, updatedData) => {
+    setEmployees(prev =>
+      prev.map(emp => {
+        if (emp.id === id) {
+          const fullName = updatedData.name
+            ? updatedData.name.trim()
+            : `${updatedData.firstName || ''} ${updatedData.lastName || ''}`.trim() || emp.name;
+          return {
+            ...emp,
+            ...updatedData,
+            name: fullName
+          };
+        }
+        return emp;
+      })
+    );
+    showToast(`Employee updated successfully!`);
+  };
+
+  const deleteEmployee = (id) => {
+    const emp = employees.find(e => e.id === id);
+    setEmployees(prev => prev.filter(e => e.id !== id));
+    showToast(`Employee "${emp?.name || ''}" removed.`);
   };
 
   // Toggle Attendance
@@ -222,36 +382,108 @@ export function SaloonProvider({ children }) {
   };
 
   // 3. Service Actions
-  const addService = ({ name, department, price, duration, description, image }) => {
+  const addService = ({ name, department, price, duration, description, image, status = 'active' }) => {
     const newService = {
       id: `srv-${Date.now()}`,
       name: name.trim(),
       department: department.trim(),
       price: Number(price),
       duration: Number(duration) || 30,
-      description: description.trim(),
-      image: image || '/images/haircut_action.jpg'
+      description: description ? description.trim() : '',
+      image: image || '/images/haircut_action.jpg',
+      status: status || 'active'
     };
     setServices(prev => [newService, ...prev]);
     showToast(`Service "${newService.name}" added successfully!`);
     return newService;
   };
 
+  const updateService = (id, updatedFields) => {
+    setServices(prev =>
+      prev.map(s => (s.id === id ? { ...s, ...updatedFields } : s))
+    );
+    showToast(`Service updated successfully!`);
+  };
+
+  const deleteService = (id) => {
+    setServices(prev => prev.filter(s => s.id !== id));
+    showToast(`Service removed.`);
+  };
+
   // 4. Product Actions
-  const addProduct = ({ name, category, price, stock, description, image }) => {
+  const addProduct = ({
+    name,
+    category,
+    sku,
+    barcode,
+    purchasePrice,
+    mrp = 0,
+    sellingPrice,
+    price,
+    stock,
+    lowStockLimit = 5,
+    supplierName,
+    description,
+    image,
+    status = 'active'
+  }) => {
+    const finalSellingPrice = Number(sellingPrice || price || 0);
     const newProduct = {
       id: `prd-${Date.now()}`,
       name: name.trim(),
-      category: category.trim(),
-      price: Number(price),
+      category: category ? category.trim() : 'Hair Care',
+      sku: sku ? sku.trim() : `SKU-${Date.now().toString().slice(-4)}`,
+      barcode: barcode ? barcode.trim() : `890${Date.now().toString().slice(-8)}`,
+      purchasePrice: Number(purchasePrice !== undefined ? purchasePrice : Math.round(finalSellingPrice * 0.65)),
+      mrp: Number(mrp || 0),
+      sellingPrice: finalSellingPrice,
+      price: finalSellingPrice,
       stock: Number(stock) || 0,
+      lowStockLimit: Number(lowStockLimit) || 5,
+      supplierName: supplierName ? supplierName.trim() : 'General Salon Distributor',
       soldCount: 0,
-      description: description.trim(),
-      image: image || '/images/products/argan_hair_oil.jpg'
+      description: description ? description.trim() : '',
+      image: image || '/images/products/argan_hair_oil.jpg',
+      status: status || 'active'
     };
     setProducts(prev => [newProduct, ...prev]);
     showToast(`Product "${newProduct.name}" added to inventory!`);
     return newProduct;
+  };
+
+  const updateProduct = (id, updatedFields) => {
+    setProducts(prev =>
+      prev.map(p => {
+        if (p.id !== id) return p;
+        const merged = { ...p, ...updatedFields };
+        if (updatedFields.sellingPrice !== undefined) {
+          merged.price = Number(updatedFields.sellingPrice);
+          merged.sellingPrice = Number(updatedFields.sellingPrice);
+        } else if (updatedFields.price !== undefined) {
+          merged.price = Number(updatedFields.price);
+          merged.sellingPrice = Number(updatedFields.price);
+        }
+        return merged;
+      })
+    );
+    showToast(`Product updated successfully!`);
+  };
+
+  const restockProduct = (id, quantityToAdd, newPurchasePrice) => {
+    setProducts(prev =>
+      prev.map(p => {
+        if (p.id !== id) return p;
+        const updated = { ...p, stock: (p.stock || 0) + Number(quantityToAdd) };
+        if (newPurchasePrice) updated.purchasePrice = Number(newPurchasePrice);
+        return updated;
+      })
+    );
+    showToast(`Added ${quantityToAdd} units to stock!`);
+  };
+
+  const deleteProduct = (id) => {
+    setProducts(prev => prev.filter(p => p.id !== id));
+    showToast(`Product removed from inventory.`);
   };
 
   // 5. Membership Actions
@@ -270,28 +502,69 @@ export function SaloonProvider({ children }) {
     return newMembership;
   };
 
-  const assignMembershipToCustomer = (customerId, membershipId) => {
-    const memberPlan = memberships.find(m => m.id === membershipId);
-    if (!memberPlan) return;
+  const assignMembershipToCustomer = (customerId, planIdOrName, customExpiry) => {
+    const memberPlan = memberships.find(m => m.id === planIdOrName || m.name.toLowerCase() === (planIdOrName || '').toLowerCase());
+    const planName = memberPlan ? memberPlan.name : planIdOrName;
 
-    const expiryDate = new Date();
-    expiryDate.setMonth(expiryDate.getMonth() + memberPlan.durationMonths);
-    const expiryStr = expiryDate.toISOString().split('T')[0];
+    let expiryStr = customExpiry;
+    if (!expiryStr) {
+      const durationMonths = memberPlan?.durationMonths || 12;
+      const expiryDate = new Date();
+      expiryDate.setMonth(expiryDate.getMonth() + durationMonths);
+      expiryStr = `${expiryDate.getMonth() + 1}/${expiryDate.getDate()}/${expiryDate.getFullYear()}`;
+    }
 
     setCustomers(prev =>
       prev.map(c => {
         if (c.id === customerId) {
           return {
             ...c,
-            membershipPlan: memberPlan.name,
-            membershipExpiry: expiryStr
+            membershipPlan: planName,
+            membershipExpiry: expiryStr,
+            membershipStatus: 'active'
           };
         }
         return c;
       })
     );
 
-    showToast(`Customer enrolled in ${memberPlan.name} (Valid until ${expiryStr})`);
+    const cust = customers.find(c => c.id === customerId);
+    showToast(`Assigned ${planName} to ${cust?.name || 'Customer'} (Valid until ${expiryStr})`);
+  };
+
+  const renewCustomerMembership = (customerId, newExpiryDate) => {
+    let custName = 'Customer';
+    setCustomers(prev =>
+      prev.map(c => {
+        if (c.id === customerId) {
+          custName = c.name;
+          return {
+            ...c,
+            membershipExpiry: newExpiryDate,
+            membershipStatus: 'active'
+          };
+        }
+        return c;
+      })
+    );
+    showToast(`Membership renewed for ${custName} until ${newExpiryDate}`);
+  };
+
+  const cancelCustomerMembership = (customerId) => {
+    let custName = 'Customer';
+    setCustomers(prev =>
+      prev.map(c => {
+        if (c.id === customerId) {
+          custName = c.name;
+          return {
+            ...c,
+            membershipStatus: 'cancelled'
+          };
+        }
+        return c;
+      })
+    );
+    showToast(`Membership cancelled for ${custName}`);
   };
 
   // 6. Packages Actions
@@ -321,14 +594,18 @@ export function SaloonProvider({ children }) {
     packageApplied = null,
     subtotal,
     membershipDiscount = 0,
+    taxAmount = 0,
     totalAmount,
     paymentMethod, // 'UPI' or 'Cash'
+    splitPayments = null,
     upiRef = '',
-    notes = ''
+    notes = '',
+    ...rest
   }) => {
     const today = new Date().toISOString().split('T')[0];
     const time = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-    const billId = `BILL-${Math.floor(1000 + Math.random() * 9000)}`;
+    const billCount = (bills.length + 1).toString().padStart(6, '0');
+    const billId = `INV-1-${billCount}`;
 
     const newBill = {
       id: billId,
@@ -342,8 +619,10 @@ export function SaloonProvider({ children }) {
       packageApplied,
       subtotal,
       membershipDiscount,
+      taxAmount,
       totalAmount,
       paymentMethod,
+      splitPayments: splitPayments || rest.splitPayments || null,
       upiRef: paymentMethod === 'UPI' ? (upiRef || `UPI/${Date.now().toString().slice(-6)}`) : '',
       status: 'Paid',
       notes
@@ -419,6 +698,104 @@ export function SaloonProvider({ children }) {
     return newBill;
   };
 
+  // 8. Notifications Actions
+  const markNotificationAsRead = (id) => {
+    setNotifications(prev =>
+      prev.map(n => n.id === id ? { ...n, isRead: true } : n)
+    );
+  };
+
+  const markAllNotificationsAsRead = () => {
+    setNotifications(prev => prev.map(n => ({ ...n, isRead: true })));
+    showToast('All notifications marked as read');
+  };
+
+  const deleteNotification = (id) => {
+    setNotifications(prev => prev.filter(n => n.id !== id));
+    showToast('Notification dismissed');
+  };
+
+  const clearAllNotifications = () => {
+    setNotifications([]);
+    showToast('All notifications cleared');
+  };
+
+  const refreshNotifications = () => {
+    const alerts = [];
+
+    // 1. Low stock products
+    products.filter(p => (p.stock || 0) <= (p.lowStockLimit || 5)).forEach(p => {
+      alerts.push({
+        id: `notif-stock-${p.id}`,
+        category: 'system',
+        title: `Low Stock Alert: ${p.name}`,
+        message: `${p.name} currently has ${p.stock} units remaining (Threshold: ${p.lowStockLimit || 5}). Restock recommended.`,
+        time: 'Just now',
+        type: 'danger',
+        isRead: false,
+        actionTarget: 'services-products',
+        actionLabel: 'Restock Product'
+      });
+    });
+
+    // 2. Active memberships
+    customers.filter(c => c.membershipPlan).forEach(c => {
+      alerts.push({
+        id: `notif-mem-${c.id}`,
+        category: 'membership',
+        title: `Membership Alert: ${c.name}`,
+        message: `${c.name} is enrolled in ${c.membershipPlan}. Expiry: ${c.membershipExpiry || 'Active'}.`,
+        time: '15 mins ago',
+        type: 'warning',
+        isRead: false,
+        actionTarget: 'memberships',
+        actionLabel: 'View Memberships'
+      });
+    });
+
+    // 3. Inactive / recent customers
+    customers.filter(c => !c.history || c.history.length === 0).slice(0, 2).forEach(c => {
+      alerts.push({
+        id: `notif-inactive-${c.id}`,
+        category: 'inactive',
+        title: `Client Follow-up: ${c.name}`,
+        message: `${c.name} (+91 ${c.phone}) has no recent appointments recorded. Consider sending a welcome salon promotion.`,
+        time: '1 hour ago',
+        type: 'info',
+        isRead: false,
+        actionTarget: 'customers',
+        actionLabel: 'View Customer'
+      });
+    });
+
+    // 4. Today's billing summary
+    const todayStr = new Date().toISOString().split('T')[0];
+    const todayBills = bills.filter(b => b.date === todayStr);
+    if (todayBills.length > 0) {
+      alerts.push({
+        id: `notif-bills-${todayStr}`,
+        category: 'billing',
+        title: `Today's Billing Activity`,
+        message: `${todayBills.length} POS bills generated today. Total collected: ₹${todayBills.reduce((acc, b) => acc + (b.totalAmount || 0), 0).toLocaleString()}.`,
+        time: 'Just now',
+        type: 'success',
+        isRead: false,
+        actionTarget: 'billing',
+        actionLabel: 'View POS Counter'
+      });
+    }
+
+    setNotifications(alerts.length > 0 ? alerts : INITIAL_NOTIFICATIONS);
+    showToast('Notification center refreshed');
+  };
+
+  const updateReceiptSettings = (newSettings) => {
+    setReceiptSettings(prev => ({ ...prev, ...newSettings }));
+    showToast('Receipt printing configurations saved successfully!');
+  };
+
+  const unreadNotificationsCount = notifications.filter(n => !n.isRead).length;
+
   return (
     <SaloonContext.Provider
       value={{
@@ -430,19 +807,39 @@ export function SaloonProvider({ children }) {
         customers,
         bills,
         attendanceLogs,
+        notifications,
+        unreadNotificationsCount,
+        receiptSettings,
+        updateReceiptSettings,
         activeMenu,
         setActiveMenu,
         toastMessage,
         showToast,
         addCustomer,
+        updateCustomer,
+        deleteCustomer,
         addEmployee,
+        updateEmployee,
+        deleteEmployee,
         toggleEmployeeAttendance,
         addService,
+        updateService,
+        deleteService,
         addProduct,
+        updateProduct,
+        restockProduct,
+        deleteProduct,
         addMembership,
         assignMembershipToCustomer,
+        renewCustomerMembership,
+        cancelCustomerMembership,
         addPackage,
-        createBill
+        createBill,
+        markNotificationAsRead,
+        markAllNotificationsAsRead,
+        deleteNotification,
+        clearAllNotifications,
+        refreshNotifications
       }}
     >
       {children}

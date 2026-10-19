@@ -1,257 +1,344 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import {
-  UserPlus,
-  Phone,
-  Calendar,
-  Scissors,
+  Plus,
   Search,
-  Filter
+  Printer,
+  FileSpreadsheet,
+  FileText,
+  X,
+  ChevronLeft,
+  ChevronRight
 } from 'lucide-react';
 import { useSaloon } from '../context/SaloonContext';
-import Modal from '../components/Modal';
 
 export default function EmployeesView() {
   const {
     employees,
-    addEmployee
+    addEmployee,
+    updateEmployee,
+    deleteEmployee,
+    showToast
   } = useSaloon();
 
   const [searchTerm, setSearchTerm] = useState('');
-  const [selectedDept, setSelectedDept] = useState('all');
-  const [isAddModalOpen, setIsAddModalOpen] = useState(false);
+  const [statusFilter, setStatusFilter] = useState('all');
+  const [isModalOpen, setIsModalOpen] = useState(false);
+  const [editingEmployeeId, setEditingEmployeeId] = useState(null);
 
-  // Form State for Adding Employee
-  const [formData, setFormData] = useState({
-    name: '',
+  // Esc key and body overflow handling for modal
+  useEffect(() => {
+    const handleEsc = (e) => {
+      if (e.key === 'Escape') setIsModalOpen(false);
+    };
+    if (isModalOpen) {
+      document.body.style.overflow = 'hidden';
+      window.addEventListener('keydown', handleEsc);
+    }
+    return () => {
+      document.body.style.overflow = 'unset';
+      window.removeEventListener('keydown', handleEsc);
+    };
+  }, [isModalOpen]);
+
+  // Pagination state
+  const [currentPage, setCurrentPage] = useState(1);
+  const pageSize = 10;
+
+  const initialFormState = {
+    firstName: '',
+    lastName: '',
     phone: '',
-    department: 'Hair Cut & Styling'
-  });
-
-  const departmentOptions = [
-    'Hair Cut & Styling',
-    'Facial & Skincare',
-    'Hair Straightening & Coloring',
-    'Beard Grooming & Shaving',
-    'Spa, D-Tan & Massage'
-  ];
-
-  const handleAddSubmit = (e) => {
-    e.preventDefault();
-    if (!formData.name.trim() || !formData.phone.trim()) return;
-
-    addEmployee(formData);
-    setFormData({
-      name: '',
-      phone: '',
-      department: 'Hair Cut & Styling'
-    });
-    setIsAddModalOpen(false);
+    role: '',
+    specialization: '',
+    salary: '',
+    commissionRate: '',
+    status: 'active',
+    joiningDate: '2026-08-01'
   };
 
-  const presentCount = employees.filter(e => e.presentToday).length;
-  const absentCount = employees.length - presentCount;
-  const attendanceRate = employees.length > 0 ? Math.round((presentCount / employees.length) * 100) : 0;
+  const [formData, setFormData] = useState(initialFormState);
 
-  const filteredEmployees = employees.filter(emp => {
-    const matchesSearch =
-      emp.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      emp.phone.includes(searchTerm);
-    const matchesDept = selectedDept === 'all' || emp.department === selectedDept;
-    return matchesSearch && matchesDept;
-  });
+  // Open modal for Adding new employee
+  const handleOpenAddModal = () => {
+    setEditingEmployeeId(null);
+    setFormData(initialFormState);
+    setIsModalOpen(true);
+  };
 
-  const todayStr = new Date().toISOString().split('T')[0];
+  // Open modal for Editing an employee
+  const handleOpenEditModal = (emp) => {
+    setEditingEmployeeId(emp.id);
+
+    let fName = emp.firstName || '';
+    let lName = emp.lastName || '';
+    if (!fName && emp.name) {
+      const parts = emp.name.trim().split(' ');
+      fName = parts[0] || '';
+      lName = parts.slice(1).join(' ') || '';
+    }
+
+    setFormData({
+      firstName: fName,
+      lastName: lName,
+      phone: emp.phone || '',
+      role: emp.role || emp.department || '',
+      specialization: emp.specialization || emp.department || '',
+      salary: emp.salary || '',
+      commissionRate: emp.commissionRate !== undefined ? emp.commissionRate : 8,
+      status: emp.status || (emp.presentToday ? 'active' : 'inactive'),
+      joiningDate: emp.joinedDate || '2026-08-01'
+    });
+    setIsModalOpen(true);
+  };
+
+  // Form Submission
+  const handleFormSubmit = (e) => {
+    e.preventDefault();
+    if (!formData.firstName.trim() || !formData.phone.trim()) {
+      showToast('First Name and Phone Number are required.');
+      return;
+    }
+
+    if (editingEmployeeId) {
+      updateEmployee(editingEmployeeId, formData);
+    } else {
+      addEmployee(formData);
+    }
+
+    setIsModalOpen(false);
+  };
+
+  // Delete Confirmation
+  const handleDeleteEmployee = (emp) => {
+    if (window.confirm(`Are you sure you want to remove ${emp.name}?`)) {
+      deleteEmployee(emp.id);
+    }
+  };
+
+  // Filtering employees
+  const filteredEmployees = useMemo(() => {
+    return employees.filter(emp => {
+      const q = searchTerm.toLowerCase().trim();
+      const matchesSearch =
+        !q ||
+        emp.name?.toLowerCase().includes(q) ||
+        emp.phone?.toLowerCase().includes(q) ||
+        emp.role?.toLowerCase().includes(q);
+
+      const empStatus = emp.status || (emp.presentToday ? 'active' : 'inactive');
+      const matchesStatus =
+        statusFilter === 'all' ||
+        empStatus.toLowerCase() === statusFilter.toLowerCase();
+
+      return matchesSearch && matchesStatus;
+    });
+  }, [employees, searchTerm, statusFilter]);
+
+  // Paginated list
+  const totalPages = Math.ceil(filteredEmployees.length / pageSize) || 1;
+  const paginatedEmployees = useMemo(() => {
+    const start = (currentPage - 1) * pageSize;
+    return filteredEmployees.slice(start, start + pageSize);
+  }, [filteredEmployees, currentPage]);
+
+  // Export handlers
+  const handlePrint = () => {
+    window.print();
+  };
+
+  const handleExcelExport = () => {
+    const headers = ['NAME,PHONE,ROLE / JOB TITLE,COMMISSION %,STATUS,JOINING DATE'];
+    const rows = filteredEmployees.map(emp => {
+      const status = emp.status || (emp.presentToday ? 'active' : 'inactive');
+      const commission = emp.commissionRate !== undefined ? emp.commissionRate : 8;
+      const role = emp.role || emp.department || 'Stylist';
+      return `"${emp.name}","${emp.phone}","${role}","${commission}%","${status}","${emp.joinedDate || ''}"`;
+    });
+
+    const csvContent = 'data:text/csv;charset=utf-8,' + [headers, ...rows].join('\n');
+    const encodedUri = encodeURI(csvContent);
+    const link = document.createElement('a');
+    link.setAttribute('href', encodedUri);
+    link.setAttribute('download', `employees_register_${new Date().toISOString().split('T')[0]}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    showToast('Exported employee register to Excel (CSV) successfully!');
+  };
+
+  const handlePDFExport = () => {
+    showToast('Preparing employee register. Choose "Save as PDF" in your print window.');
+    setTimeout(() => {
+      window.print();
+    }, 400);
+  };
 
   return (
     <div className="space-y-6 animate-fade-in pb-12">
-      {/* Top Header with title and Right Top Add Employee Button/Icon */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-white p-6 rounded-2xl border border-[#EFECE1] shadow-sm">
+      {/* Page Title & Right Top Action Button */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
-          <h2 className="text-2xl font-bold text-[#18191B]" style={{ fontFamily: 'var(--font-heading)' }}>
-            Salon Stylists & Staff Hub
+          <h2
+            className="text-2xl font-bold text-[#18191B]"
+            style={{ fontFamily: 'var(--font-heading)' }}
+          >
+            Staff & Employee Register
           </h2>
           <p className="text-xs text-[#646875] mt-1">
-            Department assignments, daily Present/Absent attendance tracking, and serviced volume
+            Configure commissions, salaries, staff profiles, and service delivery performance.
           </p>
         </div>
 
-        {/* Right Top Action: Add Employee Button/Icon */}
-        <div className="flex items-center gap-3">
+        {/* Right Top + Add Employee Button (Matching screenshot) */}
+        <div>
           <button
             id="btn-add-employee"
-            onClick={() => setIsAddModalOpen(true)}
-            className="gold-gradient-btn px-5 py-2.5 rounded-xl text-sm font-bold shadow-md flex items-center gap-2"
+            onClick={handleOpenAddModal}
+            className="bg-black text-white px-4 py-2.5 rounded-xl text-sm font-semibold flex items-center gap-2 hover:bg-neutral-800 transition-colors shadow-sm"
           >
-            <UserPlus size={18} />
+            <Plus size={16} />
             <span>Add Employee</span>
           </button>
         </div>
       </div>
 
-      {/* Attendance KPI Cards */}
-      <div className="grid grid-cols-1 sm:grid-cols-4 gap-4">
-        <div className="luxury-card p-5 bg-white">
-          <span className="text-[11px] font-bold uppercase tracking-wider text-[#9499A8]">Total Stylists</span>
-          <p className="text-2xl font-black text-[#18191B] font-mono mt-1">{employees.length}</p>
-          <span className="text-xs text-[#646875] mt-1 block">Active on payroll</span>
-        </div>
+      {/* Filter and Export Bar (Matching screenshot) */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+        {/* Left: Search input and Status dropdown */}
+        <div className="flex flex-wrap items-center gap-3 flex-1">
+          {/* Search Box */}
+          <div className="relative flex-1 min-w-[240px] max-w-sm">
+            <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 text-[#9CA3AF]" size={16} />
+            <input
+              type="text"
+              placeholder="Search by name, phone..."
+              value={searchTerm}
+              onChange={(e) => {
+                setSearchTerm(e.target.value);
+                setCurrentPage(1);
+              }}
+              className="w-full pl-10 pr-4 py-2.5 bg-white rounded-xl border border-[#E5E7EB] text-sm text-[#18191B] placeholder-[#9CA3AF] focus:outline-none focus:border-black shadow-xs"
+            />
+          </div>
 
-        <div className="luxury-card p-5 bg-white">
-          <span className="text-[11px] font-bold uppercase tracking-wider text-[#10B981]">Present Today</span>
-          <p className="text-2xl font-black text-[#10B981] font-mono mt-1">{presentCount}</p>
-          <span className="text-xs text-[#10B981] font-semibold mt-1 block">On floor serving</span>
-        </div>
-
-        <div className="luxury-card p-5 bg-white">
-          <span className="text-[11px] font-bold uppercase tracking-wider text-[#EF4444]">Absent Today</span>
-          <p className="text-2xl font-black text-[#EF4444] font-mono mt-1">{absentCount}</p>
-          <span className="text-xs text-[#646875] mt-1 block">On leave</span>
-        </div>
-
-        <div className="luxury-card p-5 bg-white">
-          <span className="text-[11px] font-bold uppercase tracking-wider text-[#B58D20]">Attendance Rate</span>
-          <p className="text-2xl font-black text-[#B58D20] font-mono mt-1">{attendanceRate}%</p>
-          <span className="text-xs text-[#646875] mt-1 block">Daily team presence</span>
-        </div>
-      </div>
-
-      {/* Search and Department Filter */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        <div className="md:col-span-2 relative">
-          <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-[#9499A8]" size={18} />
-          <input
-            type="text"
-            placeholder="Search employee by name or phone..."
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-            className="w-full pl-11 pr-4 py-3 bg-white rounded-xl border border-[#EFECE1] text-sm focus:outline-none focus:border-[#D4AF37] shadow-sm text-[#18191B]"
-          />
-        </div>
-
-        <div className="flex items-center gap-2">
-          <Filter size={18} className="text-[#9499A8] shrink-0" />
+          {/* Status Dropdown */}
           <select
-            value={selectedDept}
-            onChange={(e) => setSelectedDept(e.target.value)}
-            className="w-full py-3 px-4 bg-white rounded-xl border border-[#EFECE1] text-sm focus:outline-none focus:border-[#D4AF37] shadow-sm text-[#18191B]"
+            value={statusFilter}
+            onChange={(e) => {
+              setStatusFilter(e.target.value);
+              setCurrentPage(1);
+            }}
+            className="py-2.5 px-4 bg-white rounded-xl border border-[#E5E7EB] text-sm text-[#18191B] focus:outline-none focus:border-black shadow-xs cursor-pointer"
           >
-            <option value="all">All Departments</option>
-            {departmentOptions.map(dept => (
-              <option key={dept} value={dept}>{dept}</option>
-            ))}
+            <option value="all">All Statuses</option>
+            <option value="active">Active</option>
+            <option value="inactive">Inactive</option>
           </select>
         </div>
+
+        {/* Right: Print, Excel, PDF Export Buttons */}
+        <div className="flex items-center gap-2.5 shrink-0">
+          <button
+            type="button"
+            onClick={handlePrint}
+            className="px-3.5 py-2 bg-white border border-[#E5E7EB] rounded-xl text-xs font-semibold text-[#374151] hover:bg-[#F9FAFB] flex items-center gap-1.5 transition-colors shadow-xs"
+          >
+            <Printer size={15} className="text-[#6B7280]" />
+            <span>Print</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={handleExcelExport}
+            className="px-3.5 py-2 bg-[#ECFDF5] border border-[#A7F3D0] rounded-xl text-xs font-semibold text-[#065F46] hover:bg-[#D1FAE5] flex items-center gap-1.5 transition-colors shadow-xs"
+          >
+            <FileSpreadsheet size={15} className="text-[#059669]" />
+            <span>Excel</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={handlePDFExport}
+            className="px-3.5 py-2 bg-[#FEF2F2] border border-[#FECACA] rounded-xl text-xs font-semibold text-[#991B1B] hover:bg-[#FEE2E2] flex items-center gap-1.5 transition-colors shadow-xs"
+          >
+            <FileText size={15} className="text-[#DC2626]" />
+            <span>PDF</span>
+          </button>
+        </div>
       </div>
 
-      {/* Employees Table Format View */}
-      <div className="bg-white rounded-2xl border border-[#EFECE1] shadow-sm overflow-hidden">
+      {/* Employees Register Table Card (Matching screenshot) */}
+      <div className="bg-white rounded-2xl border border-[#E5E7EB] shadow-xs overflow-hidden">
         <div className="overflow-x-auto">
           <table className="w-full text-left border-collapse">
             <thead>
-              <tr className="bg-[#FAF9F5] border-b border-[#EFECE1] text-[11px] uppercase tracking-wider font-bold text-[#646875]">
-                <th className="py-4 px-6">Employee</th>
-                <th className="py-4 px-6">Department</th>
-                <th className="py-4 px-6">Contact</th>
-                <th className="py-4 px-6">Joined Date</th>
-                <th className="py-4 px-6 text-center">Days Present</th>
-                <th className="py-4 px-6 text-center">Clients Served</th>
-                <th className="py-4 px-6 text-right">Today's Status</th>
+              <tr className="border-b border-[#E5E7EB] bg-[#F9FAFB] text-[11px] font-bold uppercase tracking-wider text-[#6B7280]">
+                <th className="py-3.5 px-6">NAME</th>
+                <th className="py-3.5 px-6">ROLE / JOB TITLE</th>
+                <th className="py-3.5 px-6 text-center">COMMISSION %</th>
+                <th className="py-3.5 px-6 text-center">STATUS</th>
+                <th className="py-3.5 px-6 text-right">ACTIONS</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-[#F0EBE0] text-sm">
-              {filteredEmployees.length === 0 ? (
+            <tbody className="divide-y divide-[#F3F4F6] text-sm">
+              {paginatedEmployees.length === 0 ? (
                 <tr>
-                  <td colSpan={7} className="py-12 text-center text-[#9499A8] text-sm">
-                    No employees found matching your search.
+                  <td colSpan={5} className="py-12 text-center text-[#9CA3AF] text-sm">
+                    No employees found matching your criteria.
                   </td>
                 </tr>
               ) : (
-                filteredEmployees.map((emp) => {
+                paginatedEmployees.map((emp) => {
+                  const empStatus = emp.status || (emp.presentToday ? 'active' : 'inactive');
+                  const commission = emp.commissionRate !== undefined ? emp.commissionRate : 8;
+                  const role = emp.role || emp.department || 'Stylist';
+
                   return (
                     <tr
                       key={emp.id}
-                      className="hover:bg-[#FAF7ED] transition-colors group"
+                      className="hover:bg-[#F9FAFB] transition-colors"
                     >
-                      {/* Employee Name & Photo */}
-                      <td className="py-4 px-6 whitespace-nowrap">
-                        <div className="flex items-center gap-3.5">
-                          <div className="relative shrink-0">
-                            <img
-                              src={emp.avatar || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=300&q=80'}
-                              alt={emp.name}
-                              className="w-10 h-10 rounded-xl object-cover border border-[#D4AF37]/40 shadow-xs"
-                            />
-                            <span
-                              className={`absolute -bottom-0.5 -right-0.5 w-3 h-3 rounded-full border-2 border-white ${
-                                emp.presentToday ? 'bg-[#10B981]' : 'bg-[#EF4444]'
-                              }`}
-                            />
-                          </div>
-                          <div>
-                            <span className="font-bold text-sm text-[#18191B] block">
-                              {emp.name}
-                            </span>
-                            <span className="text-[11px] text-[#9499A8] font-mono">
-                              ID: {emp.id.toUpperCase()}
-                            </span>
-                          </div>
-                        </div>
+                      {/* Name */}
+                      <td className="py-4 px-6 font-semibold text-[#111827] whitespace-nowrap">
+                        {emp.name}
                       </td>
 
-                      {/* Department */}
-                      <td className="py-4 px-6 whitespace-nowrap">
-                        <span className="text-xs text-[#4A4D57] font-medium flex items-center gap-1.5">
-                          <Scissors size={13} className="text-[#C59B27] shrink-0" />
-                          <span>{emp.department}</span>
-                        </span>
+                      {/* Role / Job Title */}
+                      <td className="py-4 px-6 text-[#4B5563] whitespace-nowrap">
+                        {role}
                       </td>
 
-                      {/* Contact */}
-                      <td className="py-4 px-6 whitespace-nowrap">
-                        <span className="font-mono text-xs text-[#18191B] flex items-center gap-1.5 font-medium">
-                          <Phone size={12} className="text-[#C59B27] shrink-0" />
-                          {emp.phone}
-                        </span>
+                      {/* Commission % */}
+                      <td className="py-4 px-6 text-center font-mono text-[#374151] whitespace-nowrap">
+                        {commission}%
                       </td>
 
-                      {/* Joined Date */}
-                      <td className="py-4 px-6 whitespace-nowrap">
-                        <span className="text-xs text-[#646875] flex items-center gap-1.5 font-medium">
-                          <Calendar size={12} className="text-[#9499A8]" />
-                          {emp.joinedDate}
-                        </span>
-                      </td>
-
-                      {/* Days Present */}
+                      {/* Status */}
                       <td className="py-4 px-6 text-center whitespace-nowrap">
-                        <span className="font-mono font-semibold text-xs text-[#18191B]">
-                          {emp.totalPresentDays || 0} Days
+                        <span className="text-xs text-[#374151] font-medium lowercase">
+                          {empStatus}
                         </span>
                       </td>
 
-                      {/* Clients Served */}
-                      <td className="py-4 px-6 text-center whitespace-nowrap">
-                        <span className="font-mono font-semibold text-xs text-[#18191B]">
-                          {emp.totalServiced || 0}
-                        </span>
-                      </td>
-
-                      {/* Today's Status: Just show Present or Absent (No update buttons) */}
+                      {/* Actions: Edit & Delete */}
                       <td className="py-4 px-6 text-right whitespace-nowrap">
-                        <span
-                          className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold ${
-                            emp.presentToday
-                              ? 'bg-[#ECFDF5] text-[#059669] border border-[#A7F3D0]'
-                              : 'bg-[#FEF2F2] text-[#DC2626] border border-[#FECACA]'
-                          }`}
-                        >
-                          <span
-                            className={`w-1.5 h-1.5 rounded-full ${
-                              emp.presentToday ? 'bg-[#059669]' : 'bg-[#DC2626]'
-                            }`}
-                          />
-                          <span>{emp.presentToday ? 'Present' : 'Absent'}</span>
-                        </span>
+                        <div className="inline-flex items-center gap-3 text-xs font-semibold">
+                          <button
+                            type="button"
+                            onClick={() => handleOpenEditModal(emp)}
+                            className="text-[#374151] hover:text-black transition-colors"
+                          >
+                            Edit
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleDeleteEmployee(emp)}
+                            className="text-[#DC2626] hover:text-[#991B1B] transition-colors"
+                          >
+                            Delete
+                          </button>
+                        </div>
                       </td>
                     </tr>
                   );
@@ -260,76 +347,208 @@ export default function EmployeesView() {
             </tbody>
           </table>
         </div>
+
+        {/* Pagination Footer (Matching screenshot: Previous & Next) */}
+        <div className="px-6 py-4 border-t border-[#F3F4F6] flex items-center justify-between text-xs text-[#6B7280]">
+          <button
+            type="button"
+            disabled={currentPage <= 1}
+            onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
+            className={`font-semibold transition-colors ${
+              currentPage <= 1 ? 'text-[#D1D5DB] cursor-not-allowed' : 'text-[#374151] hover:text-black'
+            }`}
+          >
+            Previous
+          </button>
+          <span>
+            Page {currentPage} of {totalPages}
+          </span>
+          <button
+            type="button"
+            disabled={currentPage >= totalPages}
+            onClick={() => setCurrentPage(prev => Math.min(totalPages, prev + 1))}
+            className={`font-semibold transition-colors ${
+              currentPage >= totalPages ? 'text-[#D1D5DB] cursor-not-allowed' : 'text-[#374151] hover:text-black'
+            }`}
+          >
+            Next
+          </button>
+        </div>
       </div>
 
-      {/* Add Employee Modal */}
-      <Modal
-        isOpen={isAddModalOpen}
-        onClose={() => setIsAddModalOpen(false)}
-        title="Add New Employee"
-        subtitle="Register new salon stylist, aesthetician or massage therapist"
-      >
-        <form onSubmit={handleAddSubmit} className="space-y-4">
-          <div>
-            <label className="block text-xs font-bold uppercase tracking-wider text-[#646875] mb-1.5">
-              Employee Full Name *
-            </label>
-            <input
-              type="text"
-              required
-              placeholder="e.g. Sameer Kapoor"
-              value={formData.name}
-              onChange={(e) => setFormData(prev => ({ ...prev, name: e.target.value }))}
-              className="w-full px-4 py-2.5 rounded-xl border border-[#EBE8DE] text-sm focus:outline-none focus:border-[#D4AF37]"
-            />
-          </div>
+      {/* Add / Edit Employee Modal - Portaled to document.body to cover full viewport */}
+      {isModalOpen && createPortal(
+        <div
+          className="fixed inset-0 z-[9999] flex items-center justify-center p-4 sm:p-6 bg-black/60 backdrop-blur-sm overflow-y-auto animate-fade-in"
+          onClick={() => setIsModalOpen(false)}
+        >
+          <div
+            className="w-full max-w-xl bg-white rounded-3xl shadow-[0_25px_70px_rgba(0,0,0,0.25)] border border-neutral-100 overflow-hidden my-auto transform transition-all"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Modal Header */}
+            <div className="px-7 pt-6 pb-4 flex items-center justify-between border-b border-neutral-100 bg-white">
+              <h3 className="text-lg font-bold text-neutral-900 tracking-tight">
+                {editingEmployeeId ? 'Edit Employee' : 'Add New Employee'}
+              </h3>
+              <button
+                type="button"
+                onClick={() => setIsModalOpen(false)}
+                className="text-neutral-400 hover:text-neutral-900 p-2 rounded-full hover:bg-neutral-100 transition-colors"
+                aria-label="Close"
+              >
+                <X size={18} />
+              </button>
+            </div>
 
-          <div>
-            <label className="block text-xs font-bold uppercase tracking-wider text-[#646875] mb-1.5">
-              Phone Number *
-            </label>
-            <input
-              type="tel"
-              required
-              placeholder="e.g. +91 98450 11990"
-              value={formData.phone}
-              onChange={(e) => setFormData(prev => ({ ...prev, phone: e.target.value }))}
-              className="w-full px-4 py-2.5 rounded-xl border border-[#EBE8DE] text-sm focus:outline-none focus:border-[#D4AF37]"
-            />
-          </div>
+            {/* Modal Form Body */}
+            <form onSubmit={handleFormSubmit}>
+              <div className="p-7 space-y-4 bg-white">
+                {/* Row 1: First Name & Last Name */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-xs font-semibold text-neutral-700 mb-1.5">
+                      First Name *
+                    </label>
+                    <input
+                      type="text"
+                      required
+                      value={formData.firstName}
+                      onChange={(e) => setFormData(prev => ({ ...prev, firstName: e.target.value }))}
+                      className="w-full px-3.5 py-2.5 rounded-xl border border-neutral-200 bg-neutral-50/40 text-sm text-neutral-900 placeholder:text-neutral-400 focus:bg-white focus:outline-none focus:border-neutral-900 focus:ring-1 focus:ring-neutral-900 transition-all shadow-2xs"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-semibold text-neutral-700 mb-1.5">
+                      Last Name
+                    </label>
+                    <input
+                      type="text"
+                      value={formData.lastName}
+                      onChange={(e) => setFormData(prev => ({ ...prev, lastName: e.target.value }))}
+                      className="w-full px-3.5 py-2.5 rounded-xl border border-neutral-200 bg-neutral-50/40 text-sm text-neutral-900 placeholder:text-neutral-400 focus:bg-white focus:outline-none focus:border-neutral-900 focus:ring-1 focus:ring-neutral-900 transition-all shadow-2xs"
+                    />
+                  </div>
+                </div>
 
-          <div>
-            <label className="block text-xs font-bold uppercase tracking-wider text-[#646875] mb-1.5">
-              Department / Specialty *
-            </label>
-            <select
-              value={formData.department}
-              onChange={(e) => setFormData(prev => ({ ...prev, department: e.target.value }))}
-              className="w-full px-4 py-2.5 rounded-xl border border-[#EBE8DE] text-sm focus:outline-none focus:border-[#D4AF37] bg-white"
-            >
-              {departmentOptions.map(dept => (
-                <option key={dept} value={dept}>{dept}</option>
-              ))}
-            </select>
-          </div>
+                {/* Row 2: Phone Number & Role */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-xs font-semibold text-neutral-700 mb-1.5">
+                      Phone Number *
+                    </label>
+                    <input
+                      type="tel"
+                      required
+                      value={formData.phone}
+                      onChange={(e) => setFormData(prev => ({ ...prev, phone: e.target.value }))}
+                      className="w-full px-3.5 py-2.5 rounded-xl border border-neutral-200 bg-neutral-50/40 text-sm text-neutral-900 placeholder:text-neutral-400 focus:bg-white focus:outline-none focus:border-neutral-900 focus:ring-1 focus:ring-neutral-900 transition-all shadow-2xs"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-semibold text-neutral-700 mb-1.5">
+                      Role / Job Title
+                    </label>
+                    <input
+                      type="text"
+                      placeholder="e.g. Stylist, Therapist"
+                      value={formData.role}
+                      onChange={(e) => setFormData(prev => ({ ...prev, role: e.target.value }))}
+                      className="w-full px-3.5 py-2.5 rounded-xl border border-neutral-200 bg-neutral-50/40 text-sm text-neutral-900 placeholder:text-neutral-400 focus:bg-white focus:outline-none focus:border-neutral-900 focus:ring-1 focus:ring-neutral-900 transition-all shadow-2xs"
+                    />
+                  </div>
+                </div>
 
-          <div className="pt-3 flex items-center justify-end gap-3 border-t border-[#F0EBE0]">
-            <button
-              type="button"
-              onClick={() => setIsAddModalOpen(false)}
-              className="px-4 py-2 rounded-xl text-sm font-semibold text-[#646875] hover:bg-[#F4F1E8]"
-            >
-              Cancel
-            </button>
-            <button
-              type="submit"
-              className="gold-gradient-btn px-6 py-2.5 rounded-xl text-sm font-bold shadow-md"
-            >
-              Register Employee
-            </button>
+                {/* Row 3: Specialization */}
+                <div>
+                  <label className="block text-xs font-semibold text-neutral-700 mb-1.5">
+                    Specialization
+                  </label>
+                  <input
+                    type="text"
+                    placeholder="e.g. Haircut, Skincare"
+                    value={formData.specialization}
+                    onChange={(e) => setFormData(prev => ({ ...prev, specialization: e.target.value }))}
+                    className="w-full px-3.5 py-2.5 rounded-xl border border-neutral-200 bg-neutral-50/40 text-sm text-neutral-900 placeholder:text-neutral-400 focus:bg-white focus:outline-none focus:border-neutral-900 focus:ring-1 focus:ring-neutral-900 transition-all shadow-2xs"
+                  />
+                </div>
+
+                {/* Row 4: Salary, Commission %, Status */}
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                  <div>
+                    <label className="block text-xs font-semibold text-neutral-700 mb-1.5">
+                      Salary (Monthly)
+                    </label>
+                    <input
+                      type="number"
+                      placeholder="e.g. 25000"
+                      value={formData.salary}
+                      onChange={(e) => setFormData(prev => ({ ...prev, salary: e.target.value }))}
+                      className="w-full px-3.5 py-2.5 rounded-xl border border-neutral-200 bg-neutral-50/40 text-sm text-neutral-900 placeholder:text-neutral-400 focus:bg-white focus:outline-none focus:border-neutral-900 focus:ring-1 focus:ring-neutral-900 transition-all shadow-2xs"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-semibold text-neutral-700 mb-1.5">
+                      Commission %
+                    </label>
+                    <input
+                      type="number"
+                      placeholder="e.g. 8"
+                      value={formData.commissionRate}
+                      onChange={(e) => setFormData(prev => ({ ...prev, commissionRate: e.target.value }))}
+                      className="w-full px-3.5 py-2.5 rounded-xl border border-neutral-200 bg-neutral-50/40 text-sm text-neutral-900 placeholder:text-neutral-400 focus:bg-white focus:outline-none focus:border-neutral-900 focus:ring-1 focus:ring-neutral-900 transition-all shadow-2xs"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-semibold text-neutral-700 mb-1.5">
+                      Status
+                    </label>
+                    <select
+                      value={formData.status}
+                      onChange={(e) => setFormData(prev => ({ ...prev, status: e.target.value }))}
+                      className="w-full px-3.5 py-2.5 rounded-xl border border-neutral-200 bg-neutral-50/40 text-sm text-neutral-900 focus:bg-white focus:outline-none focus:border-neutral-900 focus:ring-1 focus:ring-neutral-900 transition-all cursor-pointer shadow-2xs"
+                    >
+                      <option value="active">Active</option>
+                      <option value="inactive">Inactive</option>
+                    </select>
+                  </div>
+                </div>
+
+                {/* Row 5: Joining Date */}
+                <div>
+                  <label className="block text-xs font-semibold text-neutral-700 mb-1.5">
+                    Joining Date
+                  </label>
+                  <input
+                    type="date"
+                    value={formData.joiningDate}
+                    onChange={(e) => setFormData(prev => ({ ...prev, joiningDate: e.target.value }))}
+                    className="w-full px-3.5 py-2.5 rounded-xl border border-neutral-200 bg-neutral-50/40 text-sm text-neutral-900 focus:bg-white focus:outline-none focus:border-neutral-900 focus:ring-1 focus:ring-neutral-900 transition-all cursor-pointer shadow-2xs"
+                  />
+                </div>
+              </div>
+
+              {/* Modal Footer */}
+              <div className="px-7 py-4 flex items-center justify-end gap-3 border-t border-neutral-100 bg-neutral-50/50">
+                <button
+                  type="button"
+                  onClick={() => setIsModalOpen(false)}
+                  className="px-5 py-2.5 rounded-xl border border-neutral-200 text-sm font-semibold text-neutral-700 bg-white hover:bg-neutral-100 hover:text-neutral-900 transition-colors shadow-2xs"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="px-6 py-2.5 rounded-xl bg-neutral-900 text-white text-sm font-bold hover:bg-black transition-all shadow-sm active:scale-[0.98]"
+                >
+                  Save Employee
+                </button>
+              </div>
+            </form>
           </div>
-        </form>
-      </Modal>
+        </div>,
+        document.body
+      )}
     </div>
   );
 }

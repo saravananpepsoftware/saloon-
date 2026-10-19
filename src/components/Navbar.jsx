@@ -1,9 +1,9 @@
 import React from 'react';
-import { Menu, Plus, Sparkles, Receipt, Calendar, Clock } from 'lucide-react';
+import { Menu, Plus, Sparkles, Receipt, Calendar, Clock, Bell } from 'lucide-react';
 import { useSaloon } from '../context/SaloonContext';
 
 export default function Navbar({ setMobileOpen }) {
-  const { activeMenu, setActiveMenu, bills, employees } = useSaloon();
+  const { activeMenu, setActiveMenu, bills, employees, unreadNotificationsCount } = useSaloon();
 
   const todayStr = new Date().toISOString().split('T')[0];
   const todayBills = bills.filter(b => b.date === todayStr);
@@ -13,14 +13,16 @@ export default function Navbar({ setMobileOpen }) {
   const getMenuTitle = () => {
     switch (activeMenu) {
       case 'dashboard': return 'Dashboard Overview';
-      case 'customers': return 'Customer Directory & History';
+      case 'customers': return 'CUSTOMERS';
       case 'employees': return 'Employee & Attendance Hub';
       case 'services-products': return 'Services & Retail Products';
-      case 'memberships': return 'VIP Membership Management';
+      case 'memberships': return 'Membership Management';
       case 'packages': return 'Salon Combo Packages';
       case 'billing': return 'Billing & POS Counter';
+      case 'notifications': return 'Notifications';
+      case 'settings': return 'Settings';
       case 'reports': return 'Analytics & Detailed Reports';
-      default: return 'Aura Luxe Salon';
+      default: return 'Phoenix Saloon';
     }
   };
 
@@ -69,11 +71,30 @@ export default function Navbar({ setMobileOpen }) {
           </span>
         </div>
 
+        {/* Notification Bell Button */}
+        <button
+          id="btn-nav-notifications"
+          onClick={() => setActiveMenu('notifications')}
+          className={`relative p-2.5 rounded-xl border transition-all cursor-pointer ${
+            activeMenu === 'notifications'
+              ? 'bg-[#18191B] text-[#D4AF37] border-[#D4AF37]/40 shadow-xs'
+              : 'bg-white text-[#18191B] border-[#EBE8DE] hover:bg-[#FAF8F2] hover:border-[#D4AF37]/40'
+          }`}
+          title="Notification Center"
+        >
+          <Bell size={18} />
+          {unreadNotificationsCount > 0 && (
+            <span className="absolute -top-1 -right-1 w-4 h-4 rounded-full bg-[#EF4444] text-white text-[10px] font-bold flex items-center justify-center shadow-xs animate-pulse">
+              {unreadNotificationsCount}
+            </span>
+          )}
+        </button>
+
         {/* Quick New Bill CTA */}
         {activeMenu !== 'billing' && (
           <button
             onClick={() => setActiveMenu('billing')}
-            className="gold-gradient-btn px-4 py-2 sm:px-5 sm:py-2.5 rounded-xl text-xs sm:text-sm font-bold flex items-center gap-2"
+            className="gold-gradient-btn px-4 py-2 sm:px-5 sm:py-2.5 rounded-xl text-xs sm:text-sm font-bold flex items-center gap-2 cursor-pointer"
           >
             <Receipt size={16} />
             <span className="hidden sm:inline">New Billing (POS)</span>

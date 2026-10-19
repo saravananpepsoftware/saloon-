@@ -11,6 +11,8 @@ import MembershipsView from './views/MembershipsView';
 import PackagesView from './views/PackagesView';
 import BillingView from './views/BillingView';
 import ReportsView from './views/ReportsView';
+import NotificationsView from './views/NotificationsView';
+import SettingsView from './views/SettingsView';
 
 function SaloonAppContent() {
   const { activeMenu } = useSaloon();
@@ -32,6 +34,10 @@ function SaloonAppContent() {
         return <PackagesView />;
       case 'billing':
         return <BillingView />;
+      case 'notifications':
+        return <NotificationsView />;
+      case 'settings':
+        return <SettingsView />;
       case 'reports':
         return <ReportsView />;
       default:

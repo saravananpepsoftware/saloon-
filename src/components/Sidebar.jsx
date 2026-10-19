@@ -5,14 +5,15 @@ import {
   UserPlus,
   Sparkles,
   Crown,
-  Layers,
   Receipt,
-  BarChart3
+  BarChart3,
+  Bell,
+  Settings
 } from 'lucide-react';
 import { useSaloon } from '../context/SaloonContext';
 
 export default function Sidebar({ mobileOpen, setMobileOpen }) {
-  const { activeMenu, setActiveMenu } = useSaloon();
+  const { activeMenu, setActiveMenu, unreadNotificationsCount } = useSaloon();
 
   const navItems = [
     { id: 'dashboard', label: 'Dashboard', icon: LayoutGrid },
@@ -20,9 +21,10 @@ export default function Sidebar({ mobileOpen, setMobileOpen }) {
     { id: 'employees', label: 'Employees', icon: UserPlus },
     { id: 'services-products', label: 'Services & Products', icon: Sparkles },
     { id: 'memberships', label: 'Memberships', icon: Crown },
-    { id: 'packages', label: 'Packages', icon: Layers },
     { id: 'billing', label: 'Billing & POS', icon: Receipt, highlight: true },
-    { id: 'reports', label: 'Reports', icon: BarChart3 }
+    { id: 'notifications', label: 'Notifications', icon: Bell, badgeCount: unreadNotificationsCount },
+    { id: 'reports', label: 'Reports', icon: BarChart3 },
+    { id: 'settings', label: 'Settings', icon: Settings }
   ];
 
   const handleSelect = (id) => {
@@ -82,20 +84,20 @@ export default function Sidebar({ mobileOpen, setMobileOpen }) {
               </svg>
             </div>
 
-            {/* AURA LUXE text */}
+            {/* PHOENIX SALOON text */}
             <h1
-              className="text-[19px] font-extrabold tracking-[0.24em] text-transparent bg-clip-text bg-gradient-to-r from-[#FFF3B0] via-[#E5C365] to-[#C59B27] uppercase drop-shadow-sm select-none"
+              className="text-[18px] font-extrabold tracking-[0.2em] text-transparent bg-clip-text bg-gradient-to-r from-[#FFF3B0] via-[#E5C365] to-[#C59B27] uppercase drop-shadow-sm select-none"
               style={{ fontFamily: 'var(--font-heading)' }}
             >
-              AURA LUXE
+              PHOENIX SALOON
             </h1>
 
-            {/* SALON & SPA SUITE text */}
+            {/* LUXURY SALON & SPA text */}
             <p
-              className="text-[9.5px] font-semibold tracking-[0.32em] text-[#D8A843] uppercase mt-1 select-none opacity-90"
+              className="text-[9px] font-semibold tracking-[0.3em] text-[#D8A843] uppercase mt-1 select-none opacity-90"
               style={{ fontFamily: 'var(--font-heading)' }}
             >
-              SALON &amp; SPA SUITE
+              LUXURY SALON &amp; SPA
             </p>
           </div>
 
@@ -128,7 +130,13 @@ export default function Sidebar({ mobileOpen, setMobileOpen }) {
                     <span className="tracking-wide text-[13.5px]">{item.label}</span>
                   </div>
 
-                  {item.highlight && !isActive && (
+                  {item.badgeCount > 0 && !isActive && (
+                    <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-[#EF4444] text-white shadow-xs animate-pulse">
+                      {item.badgeCount}
+                    </span>
+                  )}
+
+                  {item.highlight && !isActive && !item.badgeCount && (
                     <span className="text-[10px] uppercase font-black tracking-wider px-2 py-0.5 rounded-full bg-[#E5C158] text-[#121418] shadow-sm">
                       POS
                     </span>

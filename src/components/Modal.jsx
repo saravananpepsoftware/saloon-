@@ -1,4 +1,5 @@
 import React, { useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { X } from 'lucide-react';
 
 export default function Modal({ isOpen, onClose, title, subtitle, children, maxWidth = 'max-w-2xl' }) {
@@ -18,13 +19,21 @@ export default function Modal({ isOpen, onClose, title, subtitle, children, maxW
 
   if (!isOpen) return null;
 
-  return (
-    <div className="modal-overlay" onClick={onClose}>
+  const modalContent = (
+    <div
+      className="fixed inset-0 z-[9999] flex items-center justify-center p-4 sm:p-6 overflow-y-auto"
+      style={{
+        backgroundColor: 'rgba(12, 14, 18, 0.65)',
+        backdropFilter: 'blur(8px)',
+        WebkitBackdropFilter: 'blur(8px)'
+      }}
+      onClick={onClose}
+    >
       <div
-        className={`w-full ${maxWidth} max-h-[88vh] flex flex-col bg-white rounded-2xl shadow-2xl border border-[#D4AF37]/30 overflow-hidden transform transition-all animate-fade-in relative my-auto`}
+        className={`w-full ${maxWidth} max-h-[90vh] flex flex-col bg-white rounded-2xl shadow-2xl border border-[#D4AF37]/35 overflow-hidden my-auto transform transition-all animate-fade-in relative`}
         onClick={(e) => e.stopPropagation()}
         style={{
-          boxShadow: '0 20px 50px rgba(18, 20, 24, 0.25), 0 0 30px rgba(212, 175, 55, 0.15)'
+          boxShadow: '0 25px 60px -12px rgba(0, 0, 0, 0.35), 0 0 35px rgba(212, 175, 55, 0.15)'
         }}
       >
         {/* Top Gold Accent Bar */}
@@ -33,7 +42,10 @@ export default function Modal({ isOpen, onClose, title, subtitle, children, maxW
         {/* Modal Header */}
         <div className="px-6 py-4 flex items-center justify-between border-b border-[#F0EBE0] bg-[#FCFCFA] shrink-0">
           <div>
-            <h3 className="text-xl font-bold text-[#18191B] flex items-center gap-2" style={{ fontFamily: 'var(--font-heading)' }}>
+            <h3
+              className="text-xl font-bold text-[#18191B] tracking-wide"
+              style={{ fontFamily: 'var(--font-heading)' }}
+            >
               {title}
             </h3>
             {subtitle && (
@@ -56,4 +68,7 @@ export default function Modal({ isOpen, onClose, title, subtitle, children, maxW
       </div>
     </div>
   );
+
+  return createPortal(modalContent, document.body);
 }
+

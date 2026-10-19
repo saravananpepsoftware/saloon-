@@ -31,8 +31,7 @@ export default function PackagesView() {
     originalPrice: '',
     packagePrice: '',
     duration: 60,
-    description: '',
-    image: '/images/haircut_action.jpg'
+    description: ''
   });
 
   const handleAddSubmit = (e) => {
@@ -52,8 +51,7 @@ export default function PackagesView() {
       originalPrice: '',
       packagePrice: '',
       duration: 60,
-      description: '',
-      image: '/images/haircut_action.jpg'
+      description: ''
     });
     setIsAddModalOpen(false);
   };
@@ -76,7 +74,7 @@ export default function PackagesView() {
           <button
             id="btn-add-package"
             onClick={() => setIsAddModalOpen(true)}
-            className="gold-gradient-btn px-5 py-2.5 rounded-xl text-sm font-bold shadow-md flex items-center gap-2"
+            className="gold-gradient-btn px-5 py-2.5 rounded-xl text-sm font-bold shadow-md flex items-center gap-2 cursor-pointer"
           >
             <Plus size={18} />
             <span>Add Package</span>
@@ -84,7 +82,7 @@ export default function PackagesView() {
         </div>
       </div>
 
-      {/* Packages Grid */}
+      {/* Packages Grid - Clean luxury cards without images */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
         {packages.map((pkg) => {
           const discountAmt = (pkg.originalPrice || pkg.packagePrice) - pkg.packagePrice;
@@ -95,70 +93,64 @@ export default function PackagesView() {
           return (
             <div
               key={pkg.id}
-              className="luxury-card bg-white border border-[#EFECE1] rounded-2xl shadow-sm hover:shadow-xl transition-all overflow-hidden flex flex-col justify-between group"
+              className="luxury-card bg-white border border-[#EFECE1] rounded-2xl shadow-sm hover:shadow-md transition-all p-6 flex flex-col justify-between group"
             >
               <div>
-                {/* Image Banner */}
-                <div className="relative h-56 overflow-hidden">
-                  <img
-                    src={pkg.image || '/images/haircut_action.jpg'}
-                    alt={pkg.name}
-                    className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-700"
-                  />
-                  <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/30 to-transparent" />
-
-                  {/* Badges on Image */}
-                  <div className="absolute top-4 left-4">
-                    <span className="px-3 py-1 rounded-full bg-white/90 backdrop-blur-md text-[#18191B] font-bold text-xs shadow-md border border-[#D4AF37]/40 flex items-center gap-1">
-                      <Sparkles size={13} className="text-[#C59B27]" /> Combo Special
-                    </span>
-                  </div>
+                {/* Header: Badges & Tags */}
+                <div className="flex items-center justify-between gap-3 mb-4">
+                  <span className="px-3 py-1 rounded-full bg-[#FAF6EA] text-[#B58D20] font-bold text-xs border border-[#D4AF37]/30 flex items-center gap-1.5 shadow-2xs">
+                    <Sparkles size={13} className="text-[#C59B27]" /> Combo Special
+                  </span>
 
                   {discountPercent > 0 && (
-                    <div className="absolute top-4 right-4">
-                      <span className="px-3 py-1 rounded-full bg-gradient-to-r from-[#D4AF37] to-[#B58D20] text-white font-black text-xs shadow-md">
-                        Save {discountPercent}%
-                      </span>
-                    </div>
+                    <span className="px-3 py-1 rounded-full bg-gradient-to-r from-[#D4AF37] to-[#B58D20] text-white font-black text-xs shadow-2xs">
+                      Save {discountPercent}%
+                    </span>
                   )}
-
-                  {/* Title overlay on bottom of image */}
-                  <div className="absolute bottom-4 left-4 right-4 text-white">
-                    <h3 className="text-xl font-bold leading-tight" style={{ fontFamily: 'var(--font-heading)' }}>
-                      {pkg.name}
-                    </h3>
-                    <p className="text-xs text-gray-300 flex items-center gap-1 mt-1">
-                      <Clock size={12} className="text-[#F9E79F]" /> Total Time: ~{pkg.duration} Mins
-                    </p>
-                  </div>
                 </div>
 
-                {/* Content details */}
-                <div className="p-6">
-                  <p className="text-xs text-[#646875] leading-relaxed">
+                {/* Package Name & Duration */}
+                <div className="mb-3">
+                  <h3
+                    className="text-xl font-bold text-[#18191B] group-hover:text-[#B58D20] transition-colors"
+                    style={{ fontFamily: 'var(--font-heading)' }}
+                  >
+                    {pkg.name}
+                  </h3>
+                  <p className="text-xs text-[#646875] flex items-center gap-1.5 mt-1.5 font-medium">
+                    <Clock size={13} className="text-[#C59B27]" /> Total Time: ~{pkg.duration} Mins
+                  </p>
+                </div>
+
+                {/* Description */}
+                {pkg.description && (
+                  <p className="text-xs text-[#646875] leading-relaxed mb-4">
                     {pkg.description}
                   </p>
+                )}
 
-                  {/* Included Services List */}
-                  <div className="mt-4 pt-4 border-t border-[#F0EBE0] space-y-2">
-                    <span className="text-[10px] font-bold uppercase tracking-wider text-[#9499A8] block">
-                      Services Included in this Package:
-                    </span>
-                    <div className="grid grid-cols-1 gap-1.5">
-                      {pkg.includedServices?.map((serviceName, sIdx) => (
-                        <div key={sIdx} className="flex items-center gap-2 text-xs font-semibold text-[#18191B]">
-                          <CheckCircle2 size={15} className="text-[#10B981] shrink-0" />
-                          <span>{serviceName}</span>
-                        </div>
-                      ))}
-                    </div>
+                {/* Included Services List */}
+                <div className="pt-4 border-t border-[#F0EBE0] space-y-2 mb-6">
+                  <span className="text-[10px] font-bold uppercase tracking-wider text-[#9499A8] block">
+                    Services Included in this Package:
+                  </span>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                    {pkg.includedServices?.map((serviceName, sIdx) => (
+                      <div
+                        key={sIdx}
+                        className="flex items-center gap-2 text-xs font-semibold text-[#18191B] bg-[#FAF9F5] px-3 py-2 rounded-xl border border-[#EFECE1]/70"
+                      >
+                        <CheckCircle2 size={15} className="text-[#10B981] shrink-0" />
+                        <span className="truncate">{serviceName}</span>
+                      </div>
+                    ))}
                   </div>
                 </div>
               </div>
 
               {/* Pricing & POS Action */}
-              <div className="p-6 pt-0">
-                <div className="p-4 rounded-xl bg-[#FAF9F5] border border-[#EFECE1] flex items-center justify-between">
+              <div className="pt-4 border-t border-[#F0EBE0]">
+                <div className="p-4 rounded-xl bg-[#FAF9F5] border border-[#EFECE1] flex items-center justify-between gap-3">
                   <div>
                     <div className="flex items-baseline gap-2">
                       <span className="font-mono font-black text-2xl text-[#18191B]">₹{pkg.packagePrice}</span>
@@ -168,14 +160,14 @@ export default function PackagesView() {
                         </span>
                       )}
                     </div>
-                    <span className="text-[11px] text-[#10B981] font-semibold block">
+                    <span className="text-[11px] text-[#10B981] font-semibold block mt-0.5">
                       You save ₹{discountAmt} on combo
                     </span>
                   </div>
 
                   <button
                     onClick={() => setActiveMenu('billing')}
-                    className="gold-gradient-btn px-5 py-2.5 rounded-xl text-xs sm:text-sm font-bold shadow-md flex items-center gap-2"
+                    className="gold-gradient-btn px-5 py-2.5 rounded-xl text-xs sm:text-sm font-bold shadow-md flex items-center gap-2 cursor-pointer"
                   >
                     <Receipt size={16} />
                     <span>Bill Package</span>
@@ -252,36 +244,18 @@ export default function PackagesView() {
             </div>
           </div>
 
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <label className="block text-xs font-bold uppercase tracking-wider text-[#646875] mb-1.5">
-                Estimated Duration (Mins)
-              </label>
-              <input
-                type="number"
-                min="15"
-                step="15"
-                value={formData.duration}
-                onChange={(e) => setFormData(prev => ({ ...prev, duration: e.target.value }))}
-                className="w-full px-4 py-2.5 rounded-xl border border-[#EBE8DE] text-sm focus:outline-none focus:border-[#D4AF37]"
-              />
-            </div>
-
-            <div>
-              <label className="block text-xs font-bold uppercase tracking-wider text-[#646875] mb-1.5">
-                Featured Cover Image
-              </label>
-              <select
-                value={formData.image}
-                onChange={(e) => setFormData(prev => ({ ...prev, image: e.target.value }))}
-                className="w-full px-4 py-2.5 rounded-xl border border-[#EBE8DE] text-sm focus:outline-none focus:border-[#D4AF37] bg-white"
-              >
-                <option value="/images/haircut_action.jpg">Haircut Action (Scissors)</option>
-                <option value="/images/beard_grooming.jpg">Beard Grooming (Hot Towel)</option>
-                <option value="/images/facial_spa.jpg">Facial & D-Tan Spa (24K Gold)</option>
-                <option value="/images/salon_hero.jpg">Salon Interior Studio</option>
-              </select>
-            </div>
+          <div>
+            <label className="block text-xs font-bold uppercase tracking-wider text-[#646875] mb-1.5">
+              Estimated Duration (Mins)
+            </label>
+            <input
+              type="number"
+              min="15"
+              step="15"
+              value={formData.duration}
+              onChange={(e) => setFormData(prev => ({ ...prev, duration: e.target.value }))}
+              className="w-full px-4 py-2.5 rounded-xl border border-[#EBE8DE] text-sm focus:outline-none focus:border-[#D4AF37]"
+            />
           </div>
 
           <div>
@@ -301,13 +275,13 @@ export default function PackagesView() {
             <button
               type="button"
               onClick={() => setIsAddModalOpen(false)}
-              className="px-4 py-2 rounded-xl text-sm font-semibold text-[#646875]"
+              className="px-4 py-2 rounded-xl text-sm font-semibold text-[#646875] cursor-pointer"
             >
               Cancel
             </button>
             <button
               type="submit"
-              className="gold-gradient-btn px-6 py-2.5 rounded-xl text-sm font-bold shadow-md"
+              className="gold-gradient-btn px-6 py-2.5 rounded-xl text-sm font-bold shadow-md cursor-pointer"
             >
               Publish Package
             </button>

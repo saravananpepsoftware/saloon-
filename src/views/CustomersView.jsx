@@ -1,22 +1,24 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
+import { createPortal } from 'react-dom';
 import {
-  UserPlus,
+  Plus,
   Search,
-  Phone,
-  Calendar,
-  Sparkles,
-  ShoppingBag,
-  CreditCard,
-  UserCheck,
+  Printer,
+  FileSpreadsheet,
+  FileText,
+  Users,
+  X,
+  ArrowLeft,
   Crown,
   History,
+  Phone,
+  Calendar,
   Receipt,
-  Eye,
+  Mail,
+  Edit2,
+  Trash2,
   CheckCircle2,
-  ChevronRight,
-  Filter,
-  ArrowLeft,
-  Printer
+  AlertTriangle
 } from 'lucide-react';
 import { useSaloon } from '../context/SaloonContext';
 import Modal from '../components/Modal';
@@ -26,56 +28,177 @@ export default function CustomersView() {
   const {
     customers,
     addCustomer,
+    updateCustomer,
+    deleteCustomer,
     setActiveMenu,
     memberships,
     assignMembershipToCustomer,
     bills
   } = useSaloon();
 
+  // Filters
   const [searchTerm, setSearchTerm] = useState('');
-  const [filterMembership, setFilterMembership] = useState('all');
+  const [selectedGender, setSelectedGender] = useState('All Genders');
+
+  // Pagination (5 items per page to match screenshot cleanly)
+  const [currentPage, setCurrentPage] = useState(1);
+  const itemsPerPage = 10;
+
+  // Modals state
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
+  const [editingCustomer, setEditingCustomer] = useState(null);
+  const [deletingCustomerId, setDeletingCustomerId] = useState(null);
+
+  // Form State for Add / Edit
+  const [formData, setFormData] = useState({
+    name: '',
+    phone: '',
+    email: '',
+    gender: 'Male',
+    notes: ''
+  });
+
+  // History & Invoice Inspection View
   const [selectedCustomer, setSelectedCustomer] = useState(null);
   const [selectedBillForInvoice, setSelectedBillForInvoice] = useState(null);
   const [isEnrollModalOpen, setIsEnrollModalOpen] = useState(false);
   const [selectedPlanId, setSelectedPlanId] = useState('');
 
-  // Add Customer Form State
-  const [formData, setFormData] = useState({
-    name: '',
-    phone: '',
-    notes: ''
-  });
+  // Open Add Modal
+  const handleOpenAddModal = () => {
+    setEditingCustomer(null);
+    setFormData({
+      name: '',
+      phone: '',
+      email: '',
+      gender: 'Male',
+      notes: ''
+    });
+    setIsAddModalOpen(true);
+  };
 
-  const handleAddSubmit = (e) => {
+  // Open Edit Modal
+  const handleOpenEditModal = (cust) => {
+    setEditingCustomer(cust);
+    setFormData({
+      name: cust.name || '',
+      phone: cust.phone || '',
+      email: cust.email || '',
+      gender: cust.gender && cust.gender !== '-' ? cust.gender : 'Male',
+      notes: cust.notes || ''
+    });
+    setIsAddModalOpen(true);
+  };
+
+  // Submit Add or Edit
+  const handleFormSubmit = (e) => {
     e.preventDefault();
     if (!formData.name.trim() || !formData.phone.trim()) return;
 
-    addCustomer(formData);
-    setFormData({ name: '', phone: '', notes: '' });
+    if (editingCustomer) {
+      updateCustomer(editingCustomer.id, {
+        name: formData.name.trim(),
+        phone: formData.phone.trim(),
+        email: formData.email.trim(),
+        gender: formData.gender,
+        notes: formData.notes.trim()
+      });
+    } else {
+      addCustomer({
+        name: formData.name.trim(),
+        phone: formData.phone.trim(),
+        email: formData.email.trim(),
+        gender: formData.gender,
+        notes: formData.notes.trim()
+      });
+    }
+
     setIsAddModalOpen(false);
+    setEditingCustomer(null);
   };
 
+  // Delete Customer
+  const confirmDeleteCustomer = () => {
+    if (deletingCustomerId) {
+      deleteCustomer(deletingCustomerId);
+      setDeletingCustomerId(null);
+    }
+  };
+
+  // Filtered customers list
+  const filteredCustomers = useMemo(() => {
+    return customers.filter((cust) => {
+      // Search filter (name, phone, email)
+      const q = searchTerm.toLowerCase().trim();
+      const matchesSearch =
+        !q ||
+        (cust.name && cust.name.toLowerCase().includes(q)) ||
+        (cust.phone && cust.phone.includes(q)) ||
+        (cust.email && cust.email.toLowerCase().includes(q));
+
+      // Gender filter
+      const matchesGender =
+        selectedGender === 'All Genders' ||
+        (selectedGender === 'Other'
+          ? cust.gender === 'Other' || cust.gender === '-'
+          : cust.gender === selectedGender);
+
+      return matchesSearch && matchesGender;
+    });
+  }, [customers, searchTerm, selectedGender]);
+
+  // Paginated customers
+  const totalPages = Math.ceil(filteredCustomers.length / itemsPerPage) || 1;
+  const paginatedCustomers = useMemo(() => {
+    const start = (currentPage - 1) * itemsPerPage;
+    return filteredCustomers.slice(start, start + itemsPerPage);
+  }, [filteredCustomers, currentPage, itemsPerPage]);
+
+  // Handle Export to Excel (CSV format)
+  const handleExportExcel = () => {
+    const headers = ['Name', 'Phone', 'Email', 'Gender', 'Registered Date', 'Membership Plan'];
+    const rows = filteredCustomers.map((c) => [
+      `"${c.name || ''}"`,
+      `"${c.phone || ''}"`,
+      `"${c.email || ''}"`,
+      `"${c.gender || '-'}"`,
+      `"${c.registeredDate || ''}"`,
+      `"${c.membershipPlan || 'None'}"`
+    ]);
+
+    const csvContent = 'data:text/csv;charset=utf-8,' + [headers.join(','), ...rows.map(e => e.join(','))].join('\n');
+    const encodedUri = encodeURI(csvContent);
+    const link = document.createElement('a');
+    link.setAttribute('href', encodedUri);
+    link.setAttribute('download', `customers_directory_${new Date().toISOString().split('T')[0]}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
+  // Handle Print / PDF
+  const handlePrint = () => {
+    window.print();
+  };
+
+  // Enroll Membership
   const handleEnrollMembership = (e) => {
     e.preventDefault();
     if (!selectedPlanId || !selectedCustomer) return;
     assignMembershipToCustomer(selectedCustomer.id, selectedPlanId);
     setIsEnrollModalOpen(false);
-    // Refresh selectedCustomer view
     const updated = customers.find(c => c.id === selectedCustomer.id);
     if (updated) setSelectedCustomer(updated);
   };
 
-  // Helper to open invoice for a visit
+  // Open Invoice helper
   const handleOpenInvoice = (h, customer) => {
-    // Look up existing bill by id
     const foundBill = bills?.find(b => b.id === h.billId);
     if (foundBill) {
       setSelectedBillForInvoice(foundBill);
       return;
     }
 
-    // Construct bill object for invoice preview
     const constructedBill = {
       id: h.billId || `INV-${Date.now().toString().slice(-4)}`,
       customerName: customer.name,
@@ -97,22 +220,8 @@ export default function CustomersView() {
     setSelectedBillForInvoice(constructedBill);
   };
 
-  // Filter customers
-  const filteredCustomers = customers.filter(c => {
-    const matchesSearch =
-      c.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      c.phone.includes(searchTerm);
-    const matchesMem =
-      filterMembership === 'all'
-        ? true
-        : filterMembership === 'members'
-        ? Boolean(c.membershipPlan)
-        : !c.membershipPlan;
-    return matchesSearch && matchesMem;
-  });
-
   // -------------------------------------------------------------------------
-  // FULL SCREEN VIEW: When a customer is selected, show as a full page view
+  // FULL SCREEN VIEW: When a customer is selected to view history
   // -------------------------------------------------------------------------
   if (selectedCustomer) {
     const history = selectedCustomer.history || [];
@@ -123,25 +232,24 @@ export default function CustomersView() {
     return (
       <div className="space-y-6 animate-fade-in pb-16">
         {/* Top Full-Page Navigation Bar */}
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-white p-5 rounded-2xl border border-[#EFECE1] shadow-sm">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-white p-5 rounded-2xl border border-gray-200 shadow-sm">
           <div className="flex items-center gap-4">
             <button
               onClick={() => setSelectedCustomer(null)}
-              className="px-4 py-2 rounded-xl border border-[#D4AF37]/50 bg-[#FAF9F5] hover:bg-[#FAF3DE] text-[#9E7814] text-xs font-bold flex items-center gap-2 shadow-xs transition-all hover:-translate-x-0.5"
+              className="px-4 py-2 rounded-xl border border-gray-200 bg-gray-50 hover:bg-gray-100 text-slate-800 text-xs font-bold flex items-center gap-2 shadow-xs transition-all hover:-translate-x-0.5"
             >
               <ArrowLeft size={16} />
               <span>Back to Customers</span>
             </button>
-            <div className="h-5 w-px bg-[#EFECE1] hidden sm:block" />
+            <div className="h-5 w-px bg-gray-200 hidden sm:block" />
             <div>
-              <p className="text-xs text-[#9499A8] font-medium">Customer Profile &amp; Service History</p>
-              <h2 className="text-xl font-bold text-[#18191B]" style={{ fontFamily: 'var(--font-heading)' }}>
+              <p className="text-xs text-gray-500 font-medium">Customer Profile &amp; Service History</p>
+              <h2 className="text-xl font-bold text-slate-900" style={{ fontFamily: 'var(--font-heading)' }}>
                 {selectedCustomer.name}
               </h2>
             </div>
           </div>
 
-          {/* Action Shortcuts */}
           <div className="flex items-center gap-3">
             <button
               onClick={() => setIsEnrollModalOpen(true)}
@@ -152,7 +260,7 @@ export default function CustomersView() {
             </button>
             <button
               onClick={() => setActiveMenu('billing')}
-              className="gold-gradient-btn px-5 py-2.5 rounded-xl text-xs font-bold flex items-center gap-2 shadow-md transition-all hover:scale-[1.02]"
+              className="bg-black hover:bg-neutral-800 text-white px-5 py-2.5 rounded-xl text-xs font-bold flex items-center gap-2 shadow-sm transition-all"
             >
               <Receipt size={15} />
               <span>New POS Bill</span>
@@ -161,40 +269,53 @@ export default function CustomersView() {
         </div>
 
         {/* Customer Profile Banner Card */}
-        <div className="p-6 rounded-2xl bg-white border border-[#EFECE1] shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-6">
+        <div className="p-6 rounded-2xl bg-white border border-gray-200 shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-6">
           <div className="flex items-start sm:items-center gap-5">
-            <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-[#1A1D24] to-[#252A34] text-white flex items-center justify-center font-bold text-2xl font-mono shadow-md border-2 border-[#D4AF37] shrink-0">
+            <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-slate-800 to-slate-950 text-white flex items-center justify-center font-bold text-2xl font-mono shadow-md border-2 border-slate-700 shrink-0">
               {selectedCustomer.name.charAt(0).toUpperCase()}
             </div>
             <div>
               <div className="flex flex-wrap items-center gap-3">
-                <h3 className="text-2xl font-bold text-[#18191B]" style={{ fontFamily: 'var(--font-heading)' }}>
+                <h3 className="text-2xl font-bold text-slate-900" style={{ fontFamily: 'var(--font-heading)' }}>
                   {selectedCustomer.name}
                 </h3>
                 {selectedCustomer.membershipPlan ? (
-                  <span className="inline-flex items-center gap-1.5 text-xs font-bold px-3 py-1 rounded-full bg-[#FAF3DE] text-[#B58D20] border border-[#D4AF37]/50 shadow-xs">
-                    <Crown size={13} className="text-[#C59B27]" />
+                  <span className="inline-flex items-center gap-1.5 text-xs font-bold px-3 py-1 rounded-full bg-amber-50 text-amber-800 border border-amber-300">
+                    <Crown size={13} className="text-amber-600" />
                     <span>{selectedCustomer.membershipPlan}</span>
                   </span>
                 ) : (
-                  <span className="text-xs font-semibold px-3 py-1 rounded-full bg-[#F4F1E8] text-[#8C7A4A] border border-[#E8E2D5]">
+                  <span className="text-xs font-semibold px-3 py-1 rounded-full bg-gray-100 text-gray-700 border border-gray-200">
                     Regular Client
+                  </span>
+                )}
+                {selectedCustomer.gender && selectedCustomer.gender !== '-' && (
+                  <span className="text-xs font-medium px-2.5 py-0.5 rounded-full bg-slate-100 text-slate-600">
+                    {selectedCustomer.gender}
                   </span>
                 )}
               </div>
 
-              <div className="flex flex-wrap items-center gap-4 text-xs text-[#646875] mt-2 font-mono">
-                <span className="flex items-center gap-1.5 text-[#18191B] font-medium">
-                  <Phone size={14} className="text-[#C59B27]" /> +91 {selectedCustomer.phone}
+              <div className="flex flex-wrap items-center gap-4 text-xs text-gray-600 mt-2 font-mono">
+                <span className="flex items-center gap-1.5 text-slate-900 font-medium">
+                  <Phone size={14} className="text-slate-500" /> +91 {selectedCustomer.phone}
                 </span>
+                {selectedCustomer.email && (
+                  <>
+                    <span>•</span>
+                    <span className="flex items-center gap-1.5 text-slate-700">
+                      <Mail size={14} className="text-slate-500" /> {selectedCustomer.email}
+                    </span>
+                  </>
+                )}
                 <span>•</span>
-                <span className="flex items-center gap-1.5 text-[#646875]">
-                  <Calendar size={14} className="text-[#9499A8]" /> Registered: {selectedCustomer.registeredDate}
+                <span className="flex items-center gap-1.5 text-gray-500">
+                  <Calendar size={14} className="text-gray-400" /> Registered: {selectedCustomer.registeredDate}
                 </span>
                 {selectedCustomer.membershipExpiry && (
                   <>
                     <span>•</span>
-                    <span className="text-[#B58D20] font-medium">
+                    <span className="text-amber-700 font-medium">
                       VIP Valid until {selectedCustomer.membershipExpiry}
                     </span>
                   </>
@@ -202,7 +323,7 @@ export default function CustomersView() {
               </div>
 
               {selectedCustomer.notes && (
-                <p className="text-xs text-[#9E7814] italic mt-2.5 bg-[#FAF9F5] px-3 py-1.5 rounded-lg border border-[#EFECE1] inline-block">
+                <p className="text-xs text-amber-900 italic mt-2.5 bg-amber-50/60 px-3 py-1.5 rounded-lg border border-amber-200/60 inline-block">
                   Styling Notes: "{selectedCustomer.notes}"
                 </p>
               )}
@@ -212,42 +333,42 @@ export default function CustomersView() {
 
         {/* Financial & Visit KPI Stats */}
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-          <div className="p-5 bg-white rounded-2xl border border-[#EFECE1] text-center shadow-sm">
-            <span className="text-[11px] uppercase tracking-wider font-bold text-[#9499A8] block">Total Lifetime Spent</span>
-            <span className="font-mono font-bold text-2xl text-[#C59B27] mt-1 block">₹{totalSpent.toLocaleString()}</span>
+          <div className="p-5 bg-white rounded-2xl border border-gray-200 text-center shadow-xs">
+            <span className="text-[11px] uppercase tracking-wider font-bold text-gray-500 block">Total Lifetime Spent</span>
+            <span className="font-mono font-bold text-2xl text-slate-900 mt-1 block">₹{totalSpent.toLocaleString()}</span>
           </div>
-          <div className="p-5 bg-white rounded-2xl border border-[#EFECE1] text-center shadow-sm">
-            <span className="text-[11px] uppercase tracking-wider font-bold text-[#9499A8] block">Total Completed Visits</span>
-            <span className="font-mono font-bold text-2xl text-[#18191B] mt-1 block">{totalVisits} Bills</span>
+          <div className="p-5 bg-white rounded-2xl border border-gray-200 text-center shadow-xs">
+            <span className="text-[11px] uppercase tracking-wider font-bold text-gray-500 block">Total Completed Visits</span>
+            <span className="font-mono font-bold text-2xl text-slate-900 mt-1 block">{totalVisits} Bills</span>
           </div>
-          <div className="p-5 bg-white rounded-2xl border border-[#EFECE1] text-center shadow-xs">
-            <span className="text-[11px] uppercase tracking-wider font-bold text-[#9499A8] block">Average Spend per Visit</span>
-            <span className="font-mono font-bold text-2xl text-[#10B981] mt-1 block">₹{avgSpend.toLocaleString()}</span>
+          <div className="p-5 bg-white rounded-2xl border border-gray-200 text-center shadow-xs">
+            <span className="text-[11px] uppercase tracking-wider font-bold text-gray-500 block">Average Spend per Visit</span>
+            <span className="font-mono font-bold text-2xl text-emerald-600 mt-1 block">₹{avgSpend.toLocaleString()}</span>
           </div>
         </div>
 
-        {/* Visit & Purchase History Section (TABLE FORMAT) */}
-        <div className="bg-white rounded-2xl border border-[#EFECE1] shadow-sm overflow-hidden p-6 space-y-4">
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-4 border-b border-[#F0EBE0]">
+        {/* Visit & Purchase History Section */}
+        <div className="bg-white rounded-2xl border border-gray-200 shadow-xs overflow-hidden p-6 space-y-4">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-4 border-b border-gray-100">
             <div>
-              <h3 className="text-lg font-bold text-[#18191B] flex items-center gap-2" style={{ fontFamily: 'var(--font-heading)' }}>
-                <History size={18} className="text-[#C59B27]" />
+              <h3 className="text-lg font-bold text-slate-900 flex items-center gap-2" style={{ fontFamily: 'var(--font-heading)' }}>
+                <History size={18} className="text-slate-600" />
                 <span>Salon Visit &amp; Purchase History ({history.length})</span>
               </h3>
-              <p className="text-xs text-[#646875] mt-0.5">
+              <p className="text-xs text-gray-500 mt-0.5">
                 Complete itemized record of services, assigned stylists, retail purchases, and receipts
               </p>
             </div>
           </div>
 
           {history.length === 0 ? (
-            <div className="p-12 text-center bg-[#FAF9F5] rounded-xl border border-dashed border-[#E0DAC9]">
-              <Receipt size={32} className="mx-auto text-[#C59B27] mb-2 opacity-60" />
-              <p className="text-sm font-semibold text-[#18191B]">No Visit Records Found</p>
-              <p className="text-xs text-[#646875] mt-1">This client has not completed any billed services yet.</p>
+            <div className="p-12 text-center bg-gray-50 rounded-xl border border-dashed border-gray-200">
+              <Receipt size={32} className="mx-auto text-gray-400 mb-2 opacity-60" />
+              <p className="text-sm font-semibold text-slate-800">No Visit Records Found</p>
+              <p className="text-xs text-gray-500 mt-1">This client has not completed any billed services yet.</p>
               <button
                 onClick={() => setActiveMenu('billing')}
-                className="gold-gradient-btn px-4 py-2 rounded-xl text-xs font-bold mt-4 inline-flex items-center gap-1.5"
+                className="bg-black text-white px-4 py-2 rounded-xl text-xs font-bold mt-4 inline-flex items-center gap-1.5 hover:bg-neutral-800"
               >
                 <Receipt size={14} />
                 <span>Create First Bill</span>
@@ -257,7 +378,7 @@ export default function CustomersView() {
             <div className="overflow-x-auto">
               <table className="w-full text-left border-collapse text-sm">
                 <thead>
-                  <tr className="bg-[#FAF9F5] border-b border-[#EFECE1] text-[11px] uppercase tracking-wider font-bold text-[#646875]">
+                  <tr className="bg-gray-100/70 border-b border-gray-200 text-[11px] uppercase tracking-wider font-bold text-gray-600">
                     <th className="py-4 px-4">Date &amp; Bill ID</th>
                     <th className="py-4 px-4">Services Rendered</th>
                     <th className="py-4 px-4">Stylist / Staff</th>
@@ -267,67 +388,54 @@ export default function CustomersView() {
                     <th className="py-4 px-4 text-right">Invoice</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-[#F0EBE0]">
+                <tbody className="divide-y divide-gray-100">
                   {history.map((h, i) => (
-                    <tr key={i} className="hover:bg-[#FAF8F2] transition-colors">
-                      {/* Date & Bill ID */}
+                    <tr key={i} className="hover:bg-gray-50/70 transition-colors">
                       <td className="py-4 px-4 whitespace-nowrap">
-                        <div className="font-mono font-bold text-xs text-[#B58D20]">{h.billId}</div>
-                        <div className="text-xs text-[#646875] mt-0.5">{h.date}</div>
+                        <div className="font-mono font-bold text-xs text-slate-900">{h.billId}</div>
+                        <div className="text-xs text-gray-500 mt-0.5">{h.date}</div>
                       </td>
-
-                      {/* Services Rendered */}
                       <td className="py-4 px-4 min-w-[220px]">
-                        <span className="font-medium text-xs text-[#18191B] leading-relaxed block">
+                        <span className="font-medium text-xs text-slate-800 leading-relaxed block">
                           {h.services && h.services.length > 0 ? h.services.join(', ') : '—'}
                         </span>
                       </td>
-
-                      {/* Stylist */}
-                      <td className="py-4 px-4 whitespace-nowrap text-xs text-[#18191B] font-medium">
+                      <td className="py-4 px-4 whitespace-nowrap text-xs text-slate-800 font-medium">
                         {h.employeeName || 'Staff Stylist'}
                       </td>
-
-                      {/* Retail Products */}
-                      <td className="py-4 px-4 min-w-[220px] text-xs text-[#18191B]">
+                      <td className="py-4 px-4 min-w-[220px] text-xs text-slate-800">
                         {h.products && h.products.length > 0 ? (
                           <div className="space-y-1">
                             {h.products.map((p, pIdx) => (
                               <div key={pIdx} className="leading-snug">
                                 <span>{p.name}</span>
-                                <span className="text-[#9E7814] font-medium ml-1">
+                                <span className="text-gray-500 font-medium ml-1">
                                   (₹{p.price}{p.quantity > 1 ? ` × ${p.quantity}` : ''})
                                 </span>
                               </div>
                             ))}
                           </div>
                         ) : (
-                          <span className="text-[#9499A8]">—</span>
+                          <span className="text-gray-400">—</span>
                         )}
                       </td>
-
-                      {/* Payment */}
                       <td className="py-4 px-4 whitespace-nowrap text-xs">
-                        <span className="font-semibold text-[#18191B] block">{h.paymentMethod}</span>
+                        <span className="font-semibold text-slate-900 block">{h.paymentMethod}</span>
                         {h.upiRef && (
-                          <span className="text-[10px] text-[#9499A8] font-mono block mt-0.5">
+                          <span className="text-[10px] text-gray-500 font-mono block mt-0.5">
                             {h.upiRef}
                           </span>
                         )}
                       </td>
-
-                      {/* Total Amount */}
                       <td className="py-4 px-4 text-right whitespace-nowrap">
-                        <span className="font-mono font-bold text-base text-[#18191B]">
+                        <span className="font-mono font-bold text-base text-slate-900">
                           ₹{h.amount?.toLocaleString()}
                         </span>
                       </td>
-
-                      {/* Invoice Action */}
                       <td className="py-4 px-4 text-right whitespace-nowrap">
                         <button
                           onClick={() => handleOpenInvoice(h, selectedCustomer)}
-                          className="text-xs text-[#B58D20] hover:text-[#8C6B10] font-semibold hover:underline inline-flex items-center gap-1 transition-colors"
+                          className="text-xs text-slate-700 hover:text-black font-semibold hover:underline inline-flex items-center gap-1 transition-colors"
                           title="View & Print Official Receipt"
                         >
                           <Printer size={13} />
@@ -342,7 +450,7 @@ export default function CustomersView() {
           )}
         </div>
 
-        {/* Enroll Membership Modal (Nested if needed) */}
+        {/* Enroll Membership Modal */}
         <Modal
           isOpen={isEnrollModalOpen}
           onClose={() => setIsEnrollModalOpen(false)}
@@ -351,7 +459,7 @@ export default function CustomersView() {
         >
           <form onSubmit={handleEnrollMembership} className="space-y-4">
             <div>
-              <label className="block text-xs font-bold uppercase tracking-wider text-[#646875] mb-2">
+              <label className="block text-xs font-bold uppercase tracking-wider text-gray-500 mb-2">
                 Select Membership Tier
               </label>
               <div className="space-y-2">
@@ -360,8 +468,8 @@ export default function CustomersView() {
                     key={m.id}
                     className={`flex items-center justify-between p-3.5 rounded-xl border cursor-pointer transition-all ${
                       selectedPlanId === m.id
-                        ? 'border-[#D4AF37] bg-[#FAF6EA]'
-                        : 'border-[#EBE8DE] hover:bg-[#FAF9F5]'
+                        ? 'border-black bg-gray-50'
+                        : 'border-gray-200 hover:bg-gray-50'
                     }`}
                   >
                     <div className="flex items-center gap-3">
@@ -371,33 +479,33 @@ export default function CustomersView() {
                         value={m.id}
                         checked={selectedPlanId === m.id}
                         onChange={(e) => setSelectedPlanId(e.target.value)}
-                        className="accent-[#D4AF37]"
+                        className="accent-black"
                       />
                       <div>
-                        <p className="font-bold text-sm text-[#18191B]">{m.name}</p>
-                        <p className="text-xs text-[#646875]">
+                        <p className="font-bold text-sm text-slate-900">{m.name}</p>
+                        <p className="text-xs text-gray-500">
                           {m.durationMonths} Months • {m.discountPercentage}% discount on all services
                         </p>
                       </div>
                     </div>
-                    <span className="font-mono font-bold text-sm text-[#B58D20]">₹{m.price}</span>
+                    <span className="font-mono font-bold text-sm text-slate-900">₹{m.price}</span>
                   </label>
                 ))}
               </div>
             </div>
 
-            <div className="pt-3 flex items-center justify-end gap-3 border-t border-[#F0EBE0]">
+            <div className="pt-3 flex items-center justify-end gap-3 border-t border-gray-100">
               <button
                 type="button"
                 onClick={() => setIsEnrollModalOpen(false)}
-                className="px-4 py-2 rounded-xl text-sm font-semibold text-[#646875]"
+                className="px-4 py-2 rounded-xl text-sm font-semibold text-gray-600 hover:bg-gray-100"
               >
                 Cancel
               </button>
               <button
                 type="submit"
                 disabled={!selectedPlanId}
-                className="gold-gradient-btn px-6 py-2.5 rounded-xl text-sm font-bold shadow-md disabled:opacity-50"
+                className="bg-black hover:bg-neutral-800 text-white px-6 py-2.5 rounded-xl text-sm font-bold shadow-sm disabled:opacity-50"
               >
                 Confirm Enrollment
               </button>
@@ -405,7 +513,7 @@ export default function CustomersView() {
           </form>
         </Modal>
 
-        {/* Invoice Modal for printable receipt preview */}
+        {/* Invoice Modal for receipt preview */}
         {selectedBillForInvoice && (
           <InvoiceModal
             bill={selectedBillForInvoice}
@@ -418,237 +526,368 @@ export default function CustomersView() {
   }
 
   // -------------------------------------------------------------------------
-  // DEFAULT VIEW: Customer Directory Table List
+  // MAIN VIEW: Customers Manager (Matching Screenshot Exactly)
   // -------------------------------------------------------------------------
   return (
-    <div className="space-y-6 animate-fade-in pb-12">
-      {/* Top Header with title and Right Top Add Customer button */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-white p-6 rounded-2xl border border-[#EFECE1] shadow-sm">
+    <div className="space-y-6 animate-fade-in pb-16">
+      {/* 1. Header with Title and Add Customer Button */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
-          <h2 className="text-2xl font-bold text-[#18191B]" style={{ fontFamily: 'var(--font-heading)' }}>
-            Customer Directory &amp; Service History
-          </h2>
-          <p className="text-xs text-[#646875] mt-1">
-            Registered salon clients, stylists serviced, retail product purchases, and payment history
+          <h1 className="text-2xl font-bold text-slate-900 tracking-tight">
+            Customers Manager
+          </h1>
+          <p className="text-xs sm:text-sm text-gray-500 mt-1">
+            Manage visitor directories, preferences, and dormant re-engagement campaigns.
           </p>
         </div>
 
-        {/* Right Top Action: Add Customer Button */}
-        <div className="flex items-center gap-3">
+        <div>
           <button
             id="btn-add-customer"
-            onClick={() => setIsAddModalOpen(true)}
-            className="gold-gradient-btn px-5 py-2.5 rounded-xl text-sm font-bold shadow-md flex items-center gap-2 transition-all hover:scale-[1.02]"
+            onClick={handleOpenAddModal}
+            className="bg-black hover:bg-neutral-800 text-white px-4 py-2.5 rounded-xl text-sm font-semibold flex items-center gap-2 shadow-sm transition-all"
           >
-            <UserPlus size={18} />
+            <Plus size={16} strokeWidth={2.5} />
             <span>Add Customer</span>
           </button>
         </div>
       </div>
 
-      {/* Search and Filters Bar */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        <div className="md:col-span-2 relative">
-          <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-[#9499A8]" size={18} />
-          <input
-            type="text"
-            placeholder="Search customer by name or phone number..."
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-            className="w-full pl-11 pr-4 py-3 bg-white rounded-xl border border-[#EFECE1] text-sm focus:outline-none focus:border-[#D4AF37] shadow-sm transition-all text-[#18191B]"
-          />
-        </div>
-
-        <div className="flex items-center gap-2">
-          <Filter size={18} className="text-[#9499A8] shrink-0" />
-          <select
-            value={filterMembership}
-            onChange={(e) => setFilterMembership(e.target.value)}
-            className="w-full py-3 px-4 bg-white rounded-xl border border-[#EFECE1] text-sm focus:outline-none focus:border-[#D4AF37] shadow-sm text-[#18191B]"
-          >
-            <option value="all">All Clients ({customers.length})</option>
-            <option value="members">VIP Members Only</option>
-            <option value="non-members">Standard Clients</option>
-          </select>
-        </div>
+      {/* 2. Navigation Tabs */}
+      <div className="flex items-center gap-8 border-b border-gray-200">
+        <button
+          className="pb-3 text-sm font-semibold text-slate-900 border-b-2 border-black"
+        >
+          All Customers
+        </button>
       </div>
+          {/* 3. Search and Action Filters Bar */}
+          <div className="bg-white p-4 rounded-2xl border border-gray-200 shadow-xs flex flex-col md:flex-row items-stretch md:items-center justify-between gap-4">
+            {/* Search Input */}
+            <div className="relative flex-1 max-w-xl">
+              <input
+                type="text"
+                placeholder="Search by name, phone, or email..."
+                value={searchTerm}
+                onChange={(e) => {
+                  setSearchTerm(e.target.value);
+                  setCurrentPage(1);
+                }}
+                className="w-full px-4 py-2.5 bg-white rounded-xl border border-gray-200 text-sm focus:outline-none focus:border-slate-400 text-slate-800 placeholder:text-gray-400 transition-all shadow-xs"
+              />
+            </div>
 
-      {/* Customer List in Table Format */}
-      <div className="bg-white rounded-2xl border border-[#EFECE1] shadow-sm overflow-hidden">
-        <div className="overflow-x-auto">
-          <table className="w-full text-left border-collapse">
-            <thead>
-              <tr className="bg-[#FAF9F5] border-b border-[#EFECE1] text-[11px] uppercase tracking-wider font-bold text-[#646875]">
-                <th className="py-4 px-6">Customer Name</th>
-                <th className="py-4 px-6">Phone Number</th>
-                <th className="py-4 px-6">Date</th>
-                <th className="py-4 px-6">Membership Details</th>
-                <th className="py-4 px-6 text-right">History</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-[#F0EBE0] text-sm">
-              {filteredCustomers.length === 0 ? (
-                <tr>
-                  <td colSpan={5} className="py-12 text-center text-[#9499A8] text-sm">
-                    No customers found matching your criteria.
-                  </td>
-                </tr>
-              ) : (
-                filteredCustomers.map((cust) => {
-                  return (
-                    <tr
-                      key={cust.id}
-                      onClick={() => setSelectedCustomer(cust)}
-                      className="hover:bg-[#FAF7ED] transition-colors cursor-pointer group"
-                      title="Click to view full customer details & history page"
-                    >
-                      {/* Customer Name */}
-                      <td className="py-4 px-6">
-                        <div className="flex items-center gap-3.5">
-                          <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-[#1A1D24] to-[#252A34] text-white flex items-center justify-center font-bold text-sm font-mono shadow-sm border border-[#D4AF37]/30 shrink-0 group-hover:border-[#D4AF37] transition-colors">
-                            {cust.name.charAt(0).toUpperCase()}
-                          </div>
-                          <div>
-                            <span className="font-bold text-[#18191B] group-hover:text-[#9E7814] transition-colors text-sm block">
-                              {cust.name}
-                            </span>
-                            {cust.notes && (
-                              <p className="text-xs text-[#9499A8] truncate max-w-xs italic mt-0.5">
-                                "{cust.notes}"
-                              </p>
-                            )}
-                          </div>
-                        </div>
-                      </td>
+            {/* Right Controls: Gender Select & Export Buttons */}
+            <div className="flex flex-wrap items-center gap-3">
+              {/* Gender Filter */}
+              <select
+                value={selectedGender}
+                onChange={(e) => {
+                  setSelectedGender(e.target.value);
+                  setCurrentPage(1);
+                }}
+                className="px-4 py-2.5 bg-white rounded-xl border border-gray-200 text-sm font-medium text-slate-700 focus:outline-none focus:border-slate-400 cursor-pointer shadow-xs"
+              >
+                <option value="All Genders">All Genders</option>
+                <option value="Male">Male</option>
+                <option value="Female">Female</option>
+                <option value="Other">Other</option>
+              </select>
 
-                      {/* Phone Number */}
-                      <td className="py-4 px-6">
-                        <span className="font-mono text-sm text-[#18191B] flex items-center gap-1.5 font-medium">
-                          <Phone size={13} className="text-[#C59B27] shrink-0" />
-                          +91 {cust.phone}
-                        </span>
-                      </td>
+              {/* Print Button */}
+              <button
+                onClick={handlePrint}
+                className="px-3.5 py-2.5 bg-white hover:bg-gray-50 border border-gray-200 rounded-xl text-sm font-medium text-slate-700 flex items-center gap-1.5 shadow-xs transition-colors"
+                title="Print Customer Directory"
+              >
+                <Printer size={16} className="text-gray-600" />
+                <span>Print</span>
+              </button>
 
-                      {/* Date */}
-                      <td className="py-4 px-6">
-                        <span className="text-xs text-[#646875] flex items-center gap-1.5 font-medium">
-                          <Calendar size={13} className="text-[#9499A8] shrink-0" />
-                          {cust.registeredDate}
-                        </span>
-                      </td>
+              {/* Excel Export Button */}
+              <button
+                onClick={handleExportExcel}
+                className="px-3.5 py-2.5 bg-emerald-50/70 hover:bg-emerald-100/70 border border-emerald-300 rounded-xl text-sm font-medium text-emerald-700 flex items-center gap-1.5 shadow-xs transition-colors"
+                title="Download Excel / CSV"
+              >
+                <FileSpreadsheet size={16} className="text-emerald-600" />
+                <span>Excel</span>
+              </button>
 
-                      {/* Separate Column: Membership Details */}
-                      <td className="py-4 px-6">
-                        {cust.membershipPlan ? (
-                          <div className="flex flex-col gap-0.5">
-                            <span className="inline-flex items-center gap-1.5 text-xs font-bold px-2.5 py-1 rounded-full bg-[#FAF3DE] text-[#B58D20] border border-[#D4AF37]/40 w-fit">
-                              <Crown size={12} className="text-[#C59B27]" />
-                              <span>{cust.membershipPlan}</span>
-                            </span>
-                            {cust.membershipExpiry && (
-                              <span className="text-[10px] text-[#9499A8] font-mono pl-1">
-                                Exp: {cust.membershipExpiry}
-                              </span>
-                            )}
-                          </div>
-                        ) : (
-                          <span className="text-xs text-[#8C7A4A] font-medium bg-[#F4F1E8] px-2.5 py-1 rounded-full border border-[#E8E2D5] inline-block">
-                            Regular Client
-                          </span>
-                        )}
-                      </td>
+              {/* PDF Export Button */}
+              <button
+                onClick={handlePrint}
+                className="px-3.5 py-2.5 bg-rose-50/70 hover:bg-rose-100/70 border border-rose-300 rounded-xl text-sm font-medium text-rose-700 flex items-center gap-1.5 shadow-xs transition-colors"
+                title="Save as PDF"
+              >
+                <FileText size={16} className="text-rose-600" />
+                <span>PDF</span>
+              </button>
+            </div>
+          </div>
 
-                      {/* Action: Click to open full page history */}
-                      <td className="py-4 px-6 text-right">
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            setSelectedCustomer(cust);
-                          }}
-                          className="px-3.5 py-1.5 rounded-xl border border-[#D4AF37] text-[#9E7814] hover:bg-[#FAF3DE] text-xs font-bold inline-flex items-center gap-1.5 transition-all shadow-xs"
-                        >
-                          <History size={13} />
-                          <span>History</span>
-                          <ChevronRight size={13} className="text-[#C59B27]" />
-                        </button>
+          {/* 4. Customers Table */}
+          <div className="bg-white rounded-2xl border border-gray-200 shadow-xs overflow-hidden">
+            <div className="overflow-x-auto">
+              <table className="w-full text-left border-collapse">
+                <thead>
+                  <tr className="bg-[#F1F3F5] border-b border-gray-200 text-[11px] uppercase tracking-wider font-bold text-gray-500">
+                    <th className="py-4 px-6 font-semibold">NAME</th>
+                    <th className="py-4 px-6 font-semibold">PHONE</th>
+                    <th className="py-4 px-6 font-semibold">EMAIL</th>
+                    <th className="py-4 px-6 font-semibold">GENDER</th>
+                    <th className="py-4 px-6 font-semibold">ACTIONS</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-100 text-sm">
+                  {paginatedCustomers.length === 0 ? (
+                    <tr>
+                      <td colSpan={5} className="py-12 text-center text-gray-400">
+                        No customers found matching your criteria.
                       </td>
                     </tr>
-                  );
-                })
-              )}
-            </tbody>
-          </table>
-        </div>
-      </div>
+                  ) : (
+                    paginatedCustomers.map((cust) => {
+                      return (
+                        <tr
+                          key={cust.id}
+                          className="hover:bg-gray-50/80 transition-colors"
+                        >
+                          {/* NAME */}
+                          <td className="py-4 px-6">
+                            <button
+                              onClick={() => setSelectedCustomer(cust)}
+                              className="font-bold text-slate-900 hover:text-black hover:underline text-left block"
+                            >
+                              {cust.name}
+                            </button>
+                          </td>
 
-      {/* Add Customer Modal */}
-      <Modal
-        isOpen={isAddModalOpen}
-        onClose={() => setIsAddModalOpen(false)}
-        title="Add New Customer"
-        subtitle="Register client name and phone number into salon directory"
-      >
-        <form onSubmit={handleAddSubmit} className="space-y-4">
-          <div>
-            <label className="block text-xs font-bold uppercase tracking-wider text-[#646875] mb-1.5">
-              Customer Full Name *
-            </label>
-            <input
-              type="text"
-              required
-              placeholder="e.g. Ramesh Varma"
-              value={formData.name}
-              onChange={(e) => setFormData(prev => ({ ...prev, name: e.target.value }))}
-              className="w-full px-4 py-2.5 rounded-xl border border-[#EBE8DE] text-sm focus:outline-none focus:border-[#D4AF37]"
-            />
+                          {/* PHONE */}
+                          <td className="py-4 px-6 text-slate-700">
+                            {cust.phone}
+                          </td>
+
+                          {/* EMAIL */}
+                          <td className="py-4 px-6 text-slate-600">
+                            {cust.email || '-'}
+                          </td>
+
+                          {/* GENDER */}
+                          <td className="py-4 px-6 text-slate-700">
+                            {cust.gender || '-'}
+                          </td>
+
+                          {/* ACTIONS: Edit & Delete */}
+                          <td className="py-4 px-6">
+                            <div className="flex items-center gap-3">
+                              <button
+                                onClick={() => handleOpenEditModal(cust)}
+                                className="text-sm font-medium text-slate-800 hover:text-black hover:underline cursor-pointer"
+                              >
+                                Edit
+                              </button>
+                              <button
+                                onClick={() => setDeletingCustomerId(cust.id)}
+                                className="text-sm font-medium text-slate-800 hover:text-rose-600 hover:underline cursor-pointer"
+                              >
+                                Delete
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    })
+                  )}
+                </tbody>
+              </table>
+            </div>
           </div>
 
-          <div>
-            <label className="block text-xs font-bold uppercase tracking-wider text-[#646875] mb-1.5">
-              Phone Number *
-            </label>
-            <input
-              type="tel"
-              required
-              placeholder="10-digit mobile number, e.g. 9845012345"
-              value={formData.phone}
-              onChange={(e) => setFormData(prev => ({ ...prev, phone: e.target.value }))}
-              className="w-full px-4 py-2.5 rounded-xl border border-[#EBE8DE] text-sm focus:outline-none focus:border-[#D4AF37]"
-            />
-          </div>
-
-          <div>
-            <label className="block text-xs font-bold uppercase tracking-wider text-[#646875] mb-1.5">
-              Haircut / Styling Notes (Optional)
-            </label>
-            <textarea
-              rows={2}
-              placeholder="e.g. Likes fade cut, sensitive scalp, preferred stylist Vikram"
-              value={formData.notes}
-              onChange={(e) => setFormData(prev => ({ ...prev, notes: e.target.value }))}
-              className="w-full px-4 py-2.5 rounded-xl border border-[#EBE8DE] text-sm focus:outline-none focus:border-[#D4AF37]"
-            />
-          </div>
-
-          <div className="pt-3 flex items-center justify-end gap-3 border-t border-[#F0EBE0]">
+          {/* 5. Pagination Bar */}
+          <div className="flex items-center justify-between pt-2">
             <button
-              type="button"
-              onClick={() => setIsAddModalOpen(false)}
-              className="px-4 py-2 rounded-xl text-sm font-semibold text-[#646875] hover:bg-[#F4F1E8]"
+              onClick={() => setCurrentPage(prev => Math.max(prev - 1, 1))}
+              disabled={currentPage === 1}
+              className="px-4 py-2 text-sm font-medium text-slate-700 bg-white border border-gray-200 rounded-xl hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed shadow-xs transition-colors"
             >
-              Cancel
+              Previous
             </button>
+
+            <span className="text-xs text-gray-500 font-medium">
+              Showing {paginatedCustomers.length > 0 ? (currentPage - 1) * itemsPerPage + 1 : 0} to{' '}
+              {Math.min(currentPage * itemsPerPage, filteredCustomers.length)} of {filteredCustomers.length} clients
+            </span>
+
             <button
-              type="submit"
-              className="gold-gradient-btn px-6 py-2.5 rounded-xl text-sm font-bold shadow-md"
+              onClick={() => setCurrentPage(prev => Math.min(prev + 1, totalPages))}
+              disabled={currentPage >= totalPages}
+              className="px-4 py-2 text-sm font-medium text-slate-700 bg-white border border-gray-200 rounded-xl hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed shadow-xs transition-colors"
             >
-              Register Customer
+              Next
             </button>
           </div>
-        </form>
-      </Modal>
 
-      {/* Invoice Modal for printable receipt preview */}
+      {/* 6. Portaled Add / Edit Customer Modal */}
+      {isAddModalOpen &&
+        createPortal(
+          <div className="fixed inset-0 z-[9999] bg-black/60 backdrop-blur-sm flex items-center justify-center p-4 overflow-y-auto animate-fade-in">
+            <div className="relative w-full max-w-lg bg-white rounded-3xl shadow-2xl border border-gray-100 overflow-hidden transform transition-all my-8">
+              {/* Modal Header */}
+              <div className="px-6 py-5 border-b border-gray-100 flex items-center justify-between">
+                <div>
+                  <h3 className="text-lg font-bold text-slate-900">
+                    {editingCustomer ? 'Edit Customer' : 'Add New Customer'}
+                  </h3>
+                  <p className="text-xs text-gray-500 mt-0.5">
+                    {editingCustomer
+                      ? 'Update client information and contact details'
+                      : 'Register new client in the salon customer directory'}
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setIsAddModalOpen(false)}
+                  className="p-2 text-gray-400 hover:text-slate-800 rounded-xl hover:bg-gray-100 transition-colors"
+                >
+                  <X size={18} />
+                </button>
+              </div>
+
+              {/* Modal Body */}
+              <form onSubmit={handleFormSubmit} className="p-6 space-y-4">
+                {/* Full Name */}
+                <div>
+                  <label className="block text-xs font-bold uppercase tracking-wider text-gray-600 mb-1.5">
+                    Customer Full Name *
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    placeholder="e.g. Vijay Chandrasekhar"
+                    value={formData.name}
+                    onChange={(e) => setFormData(prev => ({ ...prev, name: e.target.value }))}
+                    className="w-full px-4 py-2.5 rounded-xl border border-gray-200 text-sm text-slate-900 focus:outline-none focus:border-slate-800 shadow-xs"
+                  />
+                </div>
+
+                {/* Phone & Gender Row */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-xs font-bold uppercase tracking-wider text-gray-600 mb-1.5">
+                      Phone Number *
+                    </label>
+                    <input
+                      type="text"
+                      required
+                      placeholder="e.g. 9876500456"
+                      value={formData.phone}
+                      onChange={(e) => setFormData(prev => ({ ...prev, phone: e.target.value }))}
+                      className="w-full px-4 py-2.5 rounded-xl border border-gray-200 text-sm text-slate-900 focus:outline-none focus:border-slate-800 shadow-xs"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-bold uppercase tracking-wider text-gray-600 mb-1.5">
+                      Gender
+                    </label>
+                    <select
+                      value={formData.gender}
+                      onChange={(e) => setFormData(prev => ({ ...prev, gender: e.target.value }))}
+                      className="w-full px-4 py-2.5 rounded-xl border border-gray-200 text-sm text-slate-900 focus:outline-none focus:border-slate-800 shadow-xs bg-white"
+                    >
+                      <option value="Male">Male</option>
+                      <option value="Female">Female</option>
+                      <option value="Other">Other</option>
+                      <option value="-">- (Not specified)</option>
+                    </select>
+                  </div>
+                </div>
+
+                {/* Email Address */}
+                <div>
+                  <label className="block text-xs font-bold uppercase tracking-wider text-gray-600 mb-1.5">
+                    Email Address
+                  </label>
+                  <input
+                    type="email"
+                    placeholder="e.g. vijay@example.com"
+                    value={formData.email}
+                    onChange={(e) => setFormData(prev => ({ ...prev, email: e.target.value }))}
+                    className="w-full px-4 py-2.5 rounded-xl border border-gray-200 text-sm text-slate-900 focus:outline-none focus:border-slate-800 shadow-xs"
+                  />
+                </div>
+
+                {/* Styling Notes */}
+                <div>
+                  <label className="block text-xs font-bold uppercase tracking-wider text-gray-600 mb-1.5">
+                    Styling Notes / Preferences
+                  </label>
+                  <textarea
+                    rows={2}
+                    placeholder="e.g. Likes fade cut, sensitive scalp, preferred tea"
+                    value={formData.notes}
+                    onChange={(e) => setFormData(prev => ({ ...prev, notes: e.target.value }))}
+                    className="w-full px-4 py-2.5 rounded-xl border border-gray-200 text-sm text-slate-900 focus:outline-none focus:border-slate-800 shadow-xs"
+                  />
+                </div>
+
+                {/* Modal Footer */}
+                <div className="pt-4 flex items-center justify-end gap-3 border-t border-gray-100">
+                  <button
+                    type="button"
+                    onClick={() => setIsAddModalOpen(false)}
+                    className="px-4 py-2.5 rounded-xl text-sm font-semibold text-gray-600 hover:bg-gray-100 transition-colors"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    className="bg-black hover:bg-neutral-800 text-white px-6 py-2.5 rounded-xl text-sm font-bold shadow-md transition-all"
+                  >
+                    {editingCustomer ? 'Save Changes' : 'Save Customer'}
+                  </button>
+                </div>
+              </form>
+            </div>
+          </div>,
+          document.body
+        )}
+
+      {/* 7. Delete Confirmation Modal */}
+      {deletingCustomerId &&
+        createPortal(
+          <div className="fixed inset-0 z-[9999] bg-black/60 backdrop-blur-sm flex items-center justify-center p-4 animate-fade-in">
+            <div className="relative w-full max-w-sm bg-white rounded-3xl shadow-2xl border border-gray-100 p-6 text-center">
+              <div className="w-12 h-12 rounded-full bg-rose-50 text-rose-600 flex items-center justify-center mx-auto mb-4">
+                <Trash2 size={24} />
+              </div>
+              <h3 className="text-lg font-bold text-slate-900">Delete Customer?</h3>
+              <p className="text-xs text-gray-500 mt-2">
+                Are you sure you want to delete this customer record? This action cannot be undone.
+              </p>
+              <div className="flex items-center justify-center gap-3 mt-6">
+                <button
+                  type="button"
+                  onClick={() => setDeletingCustomerId(null)}
+                  className="px-4 py-2 rounded-xl text-sm font-semibold text-gray-600 hover:bg-gray-100"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={confirmDeleteCustomer}
+                  className="px-5 py-2 rounded-xl text-sm font-bold bg-rose-600 hover:bg-rose-700 text-white shadow-sm"
+                >
+                  Delete
+                </button>
+              </div>
+            </div>
+          </div>,
+          document.body
+        )}
+
+      {/* Invoice Modal for receipt view if clicked */}
       {selectedBillForInvoice && (
         <InvoiceModal
           bill={selectedBillForInvoice}
