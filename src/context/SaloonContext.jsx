@@ -8,8 +8,49 @@ import {
   INITIAL_CUSTOMERS,
   INITIAL_BILLS,
   INITIAL_ATTENDANCE_LOGS,
-  INITIAL_NOTIFICATIONS
+  INITIAL_NOTIFICATIONS,
+  INITIAL_LEAVE_REQUESTS
 } from '../data/initialData';
+
+// Helper to accurately parse date and time into a comparable timestamp for sorting
+export const parseTransactionTimestamp = (bill) => {
+  if (!bill) return 0;
+  if (bill.createdAt) {
+    const ts = new Date(bill.createdAt).getTime();
+    if (!isNaN(ts) && ts > 0) return ts;
+  }
+  const dateStr = (bill.date || '').trim();
+  if (!dateStr) return 0;
+
+  const dateParts = dateStr.split('-');
+  const year = parseInt(dateParts[0], 10);
+  const month = parseInt(dateParts[1], 10);
+  const day = parseInt(dateParts[2], 10);
+
+  if (isNaN(year) || isNaN(month) || isNaN(day)) {
+    const fallback = new Date(dateStr).getTime();
+    return isNaN(fallback) ? 0 : fallback;
+  }
+
+  let hours = 0;
+  let minutes = 0;
+  let seconds = 0;
+
+  const timeStr = (bill.time || '').trim();
+  if (timeStr) {
+    const match = timeStr.match(/^(\d{1,2}):(\d{2})(?::(\d{2}))?\s*(AM|PM)?$/i);
+    if (match) {
+      hours = parseInt(match[1], 10);
+      minutes = parseInt(match[2], 10);
+      seconds = match[3] ? parseInt(match[3], 10) : 0;
+      const ampm = match[4] ? match[4].toUpperCase() : null;
+      if (ampm === 'PM' && hours < 12) hours += 12;
+      if (ampm === 'AM' && hours === 12) hours = 0;
+    }
+  }
+
+  return new Date(year, month - 1, day, hours, minutes, seconds).getTime();
+};
 
 const SaloonContext = createContext();
 
@@ -89,6 +130,8 @@ export function SaloonProvider({ children }) {
     return saved ? JSON.parse(saved) : INITIAL_PACKAGES;
   });
 
+  const [customerViewTab, setCustomerViewTab] = useState('all'); // 'all' | 'inactive'
+
   const [customers, setCustomers] = useState(() => {
     const saved = localStorage.getItem('saloon_customers');
     let list = saved ? JSON.parse(saved) : INITIAL_CUSTOMERS;
@@ -96,16 +139,27 @@ export function SaloonProvider({ children }) {
       const initial5 = INITIAL_CUSTOMERS.slice(0, 5);
       list = [...initial5, ...list.filter(c => !initial5.some(i => i.phone === c.phone))];
     } else {
-      // Ensure email & gender exist
+      // Ensure email, gender, status & inactiveReason exist
       list = list.map(c => {
         const match = INITIAL_CUSTOMERS.find(i => i.phone === c.phone || i.name === c.name);
         return {
           ...c,
           email: c.email || match?.email || '',
-          gender: c.gender || match?.gender || '-'
+          gender: c.gender || match?.gender || '-',
+          status: c.status || match?.status || 'active',
+          inactiveReason: c.inactiveReason || match?.inactiveReason || '',
+          lastVisit: c.lastVisit || match?.lastVisit || (c.history && c.history[0]?.date) || null
         };
       });
     }
+
+    // Ensure initial inactive customers like Vikram Malhotra exist if missing
+    INITIAL_CUSTOMERS.filter(i => i.status === 'inactive').forEach(inactiveCust => {
+      if (!list.some(c => c.id === inactiveCust.id || c.phone === inactiveCust.phone)) {
+        list.push(inactiveCust);
+      }
+    });
+
     return list;
   });
 
@@ -114,14 +168,56 @@ export function SaloonProvider({ children }) {
     let list = saved ? JSON.parse(saved) : INITIAL_BILLS;
     if (!list.some(b => b.id === 'INV-1-000006')) {
       const initialInv = INITIAL_BILLS.filter(b => b.id.startsWith('INV-1-'));
-      list = [...initialInv, ...list.filter(b => !b.id.startsWith('INV-1-'))];
+      list = [...list, ...initialInv];
     }
-    return list;
+    // Always sort recent transactions first
+    return [...list].sort((a, b) => {
+      const timeA = parseTransactionTimestamp(a);
+      const timeB = parseTransactionTimestamp(b);
+      if (timeB !== timeA) return timeB - timeA;
+      return (b.id || '').localeCompare(a.id || '', undefined, { numeric: true });
+    });
   });
 
   const [attendanceLogs, setAttendanceLogs] = useState(() => {
     const saved = localStorage.getItem('saloon_attendance_logs');
-    return saved ? JSON.parse(saved) : INITIAL_ATTENDANCE_LOGS;
+    if (saved) {
+      try {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed) && parsed.length > 0 && parsed[0].inTime !== undefined) {
+          return parsed;
+        }
+      } catch (e) {
+        console.error(e);
+      }
+    }
+    return INITIAL_ATTENDANCE_LOGS;
+  });
+
+  const [payrollPayments, setPayrollPayments] = useState(() => {
+    const saved = localStorage.getItem('saloon_payroll_payments');
+    return saved ? JSON.parse(saved) : {
+      'emp-ananya-sen': { status: 'Paid', paidDate: '2026-10-05', paymentMethod: 'Bank Transfer (NEFT)', transactionRef: 'NEFT-884920412' },
+      'emp-priya-nair': { status: 'Paid', paidDate: '2026-10-05', paymentMethod: 'UPI Auto-Pay', transactionRef: 'UPI-992384711' },
+      'emp-rohan-sharma': { status: 'Pending', paidDate: null, paymentMethod: null, transactionRef: null },
+      'emp-1': { status: 'Paid', paidDate: '2026-10-05', paymentMethod: 'Bank Transfer (IMPS)', transactionRef: 'IMPS-119284755' },
+      'emp-4': { status: 'Pending', paidDate: null, paymentMethod: null, transactionRef: null },
+    };
+  });
+
+  const [leaveRequests, setLeaveRequests] = useState(() => {
+    const saved = localStorage.getItem('saloon_leave_requests');
+    if (saved) {
+      try {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          return parsed;
+        }
+      } catch (e) {
+        console.error(e);
+      }
+    }
+    return INITIAL_LEAVE_REQUESTS;
   });
 
   const [notifications, setNotifications] = useState(() => {
@@ -170,7 +266,13 @@ export function SaloonProvider({ children }) {
   });
 
   const [activeMenu, setActiveMenu] = useState('dashboard');
+  const [activeSettingsTab, setActiveSettingsTab] = useState('receipt');
   const [toastMessage, setToastMessage] = useState(null);
+
+  const [inactiveDaysThreshold, setInactiveDaysThreshold] = useState(() => {
+    const saved = localStorage.getItem('saloon_inactive_days_threshold');
+    return saved ? parseInt(saved, 10) : 30;
+  });
 
   // Sync to localStorage
   useEffect(() => {
@@ -206,12 +308,30 @@ export function SaloonProvider({ children }) {
   }, [attendanceLogs]);
 
   useEffect(() => {
+    localStorage.setItem('saloon_payroll_payments', JSON.stringify(payrollPayments));
+  }, [payrollPayments]);
+
+  useEffect(() => {
+    localStorage.setItem('saloon_leave_requests', JSON.stringify(leaveRequests));
+  }, [leaveRequests]);
+
+  useEffect(() => {
     localStorage.setItem('saloon_notifications', JSON.stringify(notifications));
   }, [notifications]);
 
   useEffect(() => {
     localStorage.setItem('saloon_receipt_settings', JSON.stringify(receiptSettings));
   }, [receiptSettings]);
+
+  useEffect(() => {
+    localStorage.setItem('saloon_inactive_days_threshold', inactiveDaysThreshold.toString());
+  }, [inactiveDaysThreshold]);
+
+  const updateInactiveDaysThreshold = (days) => {
+    const num = Math.max(1, parseInt(days, 10) || 30);
+    setInactiveDaysThreshold(num);
+    showToast(`Inactive customer threshold set to ${num} days.`);
+  };
 
   const showToast = (message, type = 'success') => {
     setToastMessage({ message, type, id: Date.now() });
@@ -221,7 +341,15 @@ export function SaloonProvider({ children }) {
   };
 
   // 1. Customer Actions
-  const addCustomer = ({ name, phone, email = '', gender = '-', notes = '' }) => {
+  const addCustomer = ({
+    name,
+    phone,
+    email = '',
+    gender = '-',
+    notes = '',
+    status = 'active',
+    inactiveReason = ''
+  }) => {
     // Check if phone already exists
     const existing = customers.find(c => c.phone.trim() === phone.trim());
     if (existing) {
@@ -235,6 +363,9 @@ export function SaloonProvider({ children }) {
       phone: phone.trim(),
       email: email ? email.trim() : '',
       gender: gender || '-',
+      status: status || 'active',
+      inactiveReason: status === 'inactive' ? (inactiveReason || 'Manually marked inactive') : '',
+      lastVisit: null,
       registeredDate: new Date().toISOString().split('T')[0],
       membershipPlan: null,
       membershipExpiry: null,
@@ -252,6 +383,44 @@ export function SaloonProvider({ children }) {
       prev.map(c => (c.id === id ? { ...c, ...updatedData } : c))
     );
     showToast(`Customer updated successfully!`);
+  };
+
+  const reactivateCustomer = (id) => {
+    let custName = 'Customer';
+    setCustomers(prev =>
+      prev.map(c => {
+        if (c.id === id) {
+          custName = c.name;
+          return { ...c, status: 'active', inactiveReason: '' };
+        }
+        return c;
+      })
+    );
+    showToast(`Customer "${custName}" reactivated successfully!`);
+  };
+
+  const markCustomerInactive = (id, reason = 'Marked inactive by manager') => {
+    let custName = 'Customer';
+    setCustomers(prev =>
+      prev.map(c => {
+        if (c.id === id) {
+          custName = c.name;
+          return { ...c, status: 'inactive', inactiveReason: reason };
+        }
+        return c;
+      })
+    );
+    showToast(`Customer "${custName}" marked as inactive.`);
+  };
+
+  const toggleCustomerStatus = (id) => {
+    const cust = customers.find(c => c.id === id);
+    if (!cust) return;
+    if (cust.status === 'inactive') {
+      reactivateCustomer(id);
+    } else {
+      markCustomerInactive(id);
+    }
   };
 
   const deleteCustomer = (id) => {
@@ -371,7 +540,17 @@ export function SaloonProvider({ children }) {
             date: today,
             employeeId,
             employeeName: emp.name,
-            status: willBePresent ? 'Present' : 'Absent'
+            role: emp.role || 'Stylist',
+            department: emp.department || 'Salon Floor',
+            shiftStart: '09:00 AM',
+            shiftEnd: '07:00 PM',
+            inTime: willBePresent ? '09:00 AM' : '-',
+            outTime: willBePresent ? 'Working' : '-',
+            lateMinutes: 0,
+            lateTime: willBePresent ? 'On Time' : '-',
+            workHours: willBePresent ? 'In Progress' : '-',
+            status: willBePresent ? 'Present' : 'Absent',
+            notes: willBePresent ? 'Clocked in from floor roster' : 'Marked absent'
           },
           ...filtered
         ];
@@ -379,6 +558,177 @@ export function SaloonProvider({ children }) {
 
       showToast(`${emp.name} marked ${!emp.presentToday ? 'PRESENT' : 'ABSENT'} for today.`);
     }
+  };
+
+  // Record Attendance Punch (Add or Edit)
+  const recordAttendancePunch = (record) => {
+    const today = new Date().toISOString().split('T')[0];
+    
+    setAttendanceLogs(prev => {
+      const existingIdx = prev.findIndex(item => item.id === record.id || (item.date === record.date && item.employeeId === record.employeeId));
+      if (existingIdx >= 0) {
+        const updated = [...prev];
+        updated[existingIdx] = { ...updated[existingIdx], ...record };
+        return updated;
+      }
+      return [record, ...prev];
+    });
+
+    // If punch is for today, sync employee presentToday
+    if (record.date === today) {
+      const isPresent = record.status === 'Present' || record.status === 'Late' || record.status === 'Half Day';
+      setEmployees(prev =>
+        prev.map(emp => {
+          if (emp.id === record.employeeId) {
+            return { ...emp, presentToday: isPresent };
+          }
+          return emp;
+        })
+      );
+    }
+
+    showToast(`Attendance entry saved for ${record.employeeName || 'Staff'}.`);
+  };
+
+  // Update Attendance Record
+  const updateAttendanceRecord = (id, updatedFields) => {
+    setAttendanceLogs(prev =>
+      prev.map(item => (item.id === id ? { ...item, ...updatedFields } : item))
+    );
+    showToast(`Attendance record updated.`);
+  };
+
+  // Delete Attendance Record
+  const deleteAttendanceRecord = (id) => {
+    setAttendanceLogs(prev => prev.filter(item => item.id !== id));
+    showToast(`Attendance record removed.`);
+  };
+
+  // Mark Salary Paid
+  const markSalaryPaid = (employeeId, paymentMethod = 'Bank Transfer (NEFT)', transactionRef = '') => {
+    const today = new Date().toISOString().split('T')[0];
+    const ref = transactionRef || `SAL-${Date.now().toString().slice(-6)}`;
+    setPayrollPayments(prev => ({
+      ...prev,
+      [employeeId]: {
+        status: 'Paid',
+        paidDate: today,
+        paymentMethod,
+        transactionRef: ref
+      }
+    }));
+    showToast(`Salary disbursement marked as PAID.`);
+  };
+
+  // Unmark Salary Paid (revert to Pending)
+  const unmarkSalaryPaid = (employeeId) => {
+    setPayrollPayments(prev => ({
+      ...prev,
+      [employeeId]: {
+        status: 'Pending',
+        paidDate: null,
+        paymentMethod: null,
+        transactionRef: null
+      }
+    }));
+    showToast(`Salary status changed to Pending.`);
+  };
+
+  // Leave Management Actions
+  const applyLeaveRequest = (leaveData) => {
+    const newId = `leave-${Date.now()}`;
+    const emp = employees.find(e => e.id === leaveData.employeeId);
+    
+    // Calculate days count
+    let days = 1;
+    if (leaveData.startDate && leaveData.endDate) {
+      const s = new Date(leaveData.startDate);
+      const e = new Date(leaveData.endDate);
+      const diffTime = Math.abs(e - s);
+      const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24)) + 1;
+      days = isNaN(diffDays) || diffDays < 1 ? 1 : diffDays;
+    }
+
+    const newLeave = {
+      id: newId,
+      employeeId: leaveData.employeeId,
+      employeeName: emp ? emp.name : (leaveData.employeeName || 'Staff Member'),
+      role: emp ? emp.role : (leaveData.role || 'Stylist'),
+      department: emp ? emp.department : (leaveData.department || 'Salon Floor'),
+      leaveType: leaveData.leaveType || 'Casual Leave',
+      startDate: leaveData.startDate,
+      endDate: leaveData.endDate || leaveData.startDate,
+      daysCount: leaveData.daysCount || days,
+      reason: leaveData.reason || 'Personal leave request',
+      appliedOn: leaveData.appliedOn || new Date().toISOString().split('T')[0],
+      status: leaveData.status || 'Pending',
+      reviewedBy: null,
+      reviewedOn: null,
+      reviewNote: null
+    };
+
+    setLeaveRequests(prev => [newLeave, ...prev]);
+    showToast(`Leave request submitted for ${newLeave.employeeName}.`);
+    return newLeave;
+  };
+
+  const approveLeaveRequest = (id, reviewNote = 'Approved by Salon Admin') => {
+    const today = new Date().toISOString().split('T')[0];
+    let approvedEmpId = null;
+    let approvedStartDate = null;
+    let approvedEndDate = null;
+
+    setLeaveRequests(prev =>
+      prev.map(item => {
+        if (item.id === id) {
+          approvedEmpId = item.employeeId;
+          approvedStartDate = item.startDate;
+          approvedEndDate = item.endDate;
+          return {
+            ...item,
+            status: 'Approved',
+            reviewedBy: 'Salon Admin',
+            reviewedOn: today,
+            reviewNote: reviewNote || 'Approved'
+          };
+        }
+        return item;
+      })
+    );
+
+    // If leave applies to today, update floor status
+    if (approvedEmpId && approvedStartDate && approvedEndDate) {
+      if (today >= approvedStartDate && today <= approvedEndDate) {
+        setEmployees(prev =>
+          prev.map(emp => emp.id === approvedEmpId ? { ...emp, presentToday: false } : emp)
+        );
+      }
+    }
+
+    showToast('Leave request approved successfully.');
+  };
+
+  const rejectLeaveRequest = (id, reviewNote = 'Rejected by Salon Admin') => {
+    const today = new Date().toISOString().split('T')[0];
+    setLeaveRequests(prev =>
+      prev.map(item =>
+        item.id === id
+          ? {
+              ...item,
+              status: 'Rejected',
+              reviewedBy: 'Salon Admin',
+              reviewedOn: today,
+              reviewNote: reviewNote || 'Rejected'
+            }
+          : item
+      )
+    );
+    showToast('Leave request marked as rejected.');
+  };
+
+  const deleteLeaveRequest = (id) => {
+    setLeaveRequests(prev => prev.filter(item => item.id !== id));
+    showToast('Leave record removed.');
   };
 
   // 3. Service Actions
@@ -649,6 +999,9 @@ export function SaloonProvider({ children }) {
           };
           return {
             ...c,
+            status: 'active',
+            inactiveReason: '',
+            lastVisit: today,
             history: [newHistoryEntry, ...(c.history || [])]
           };
         }
@@ -813,11 +1166,16 @@ export function SaloonProvider({ children }) {
         updateReceiptSettings,
         activeMenu,
         setActiveMenu,
+        customerViewTab,
+        setCustomerViewTab,
         toastMessage,
         showToast,
         addCustomer,
         updateCustomer,
         deleteCustomer,
+        reactivateCustomer,
+        markCustomerInactive,
+        toggleCustomerStatus,
         addEmployee,
         updateEmployee,
         deleteEmployee,
@@ -839,7 +1197,23 @@ export function SaloonProvider({ children }) {
         markAllNotificationsAsRead,
         deleteNotification,
         clearAllNotifications,
-        refreshNotifications
+        refreshNotifications,
+        payrollPayments,
+        leaveRequests,
+        applyLeaveRequest,
+        approveLeaveRequest,
+        rejectLeaveRequest,
+        deleteLeaveRequest,
+        recordAttendancePunch,
+        updateAttendanceRecord,
+        deleteAttendanceRecord,
+        markSalaryPaid,
+        unmarkSalaryPaid,
+        inactiveDaysThreshold,
+        setInactiveDaysThreshold,
+        updateInactiveDaysThreshold,
+        activeSettingsTab,
+        setActiveSettingsTab
       }}
     >
       {children}

@@ -37,7 +37,7 @@ import {
   Smartphone
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
-import { useSaloon } from '../context/SaloonContext';
+import { useSaloon, parseTransactionTimestamp } from '../context/SaloonContext';
 import InvoiceModal from '../components/InvoiceModal';
 import Modal from '../components/Modal';
 
@@ -172,6 +172,7 @@ export default function BillingView() {
   // Billing History Filter State
   const [historySearch, setHistorySearch] = useState('');
   const [historyPaymentFilter, setHistoryPaymentFilter] = useState('all');
+  const [historyDate, setHistoryDate] = useState('');
 
   // Customer membership discount percent
   const customerDiscountPercent = useMemo(() => {
@@ -621,21 +622,46 @@ export default function BillingView() {
     handleGenerateBill({ methodName, splits });
   };
 
-  // Filtered Billing History
+  // Filtered Billing History: Always list recent transactions first
   const filteredBills = useMemo(() => {
-    return bills.filter(b => {
-      const matchSearch =
-        historySearch.trim() === '' ||
-        b.id.toLowerCase().includes(historySearch.toLowerCase()) ||
-        b.customerName?.toLowerCase().includes(historySearch.toLowerCase()) ||
-        b.customerPhone?.includes(historySearch);
+    return bills
+      .filter(b => {
+        // 1. Text search
+        const matchSearch =
+          historySearch.trim() === '' ||
+          b.id.toLowerCase().includes(historySearch.toLowerCase()) ||
+          b.customerName?.toLowerCase().includes(historySearch.toLowerCase()) ||
+          b.customerPhone?.includes(historySearch);
 
-      const matchPayment =
-        historyPaymentFilter === 'all' || b.paymentMethod === historyPaymentFilter;
+        if (!matchSearch) return false;
 
-      return matchSearch && matchPayment;
-    });
-  }, [bills, historySearch, historyPaymentFilter]);
+        // 2. Payment mode filter
+        const matchPayment =
+          historyPaymentFilter === 'all' || b.paymentMethod === historyPaymentFilter;
+
+        if (!matchPayment) return false;
+
+        // 3. Particular Date Filter (Calendar)
+        if (historyDate && b.date !== historyDate) {
+          return false;
+        }
+
+        return true;
+      })
+      .sort((a, b) => {
+        const timeA = parseTransactionTimestamp(a);
+        const timeB = parseTransactionTimestamp(b);
+        if (timeB !== timeA) {
+          return timeB - timeA; // Descending: most recent transaction first
+        }
+        return (b.id || '').localeCompare(a.id || '', undefined, { numeric: true });
+      });
+  }, [bills, historySearch, historyPaymentFilter, historyDate]);
+
+  // Total amount of filtered bills
+  const filteredBillsTotal = useMemo(() => {
+    return filteredBills.reduce((acc, b) => acc + (b.totalAmount || 0), 0);
+  }, [filteredBills]);
 
   return (
     <div className="space-y-6 animate-fade-in pb-16">
@@ -1345,30 +1371,124 @@ export default function BillingView() {
       {activeTab === 'history' && (
         <div className="space-y-4">
           {/* History Header & Search Filter */}
-          <div className="luxury-card bg-white p-5 rounded-2xl border border-[#EFECE1] shadow-sm flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-            <div className="flex-1 relative">
-              <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 text-[#9499A8]" size={16} />
-              <input
-                type="text"
-                placeholder="Search by Bill #, Customer Name, Phone..."
-                value={historySearch}
-                onChange={(e) => setHistorySearch(e.target.value)}
-                className="w-full pl-10 pr-4 py-2.5 bg-[#FCFCFA] rounded-xl border border-[#EBE8DE] text-sm focus:outline-none focus:border-[#D4AF37]"
-              />
+          <div className="luxury-card bg-white p-5 rounded-2xl border border-[#EFECE1] shadow-sm space-y-3.5">
+            <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3">
+              {/* Search by Bill #, Customer Name, Phone */}
+              <div className="flex-1 relative">
+                <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 text-[#9499A8]" size={16} />
+                <input
+                  type="text"
+                  placeholder="Search by Bill #, Customer Name, Phone..."
+                  value={historySearch}
+                  onChange={(e) => setHistorySearch(e.target.value)}
+                  className="w-full pl-10 pr-4 py-2.5 bg-[#FCFCFA] rounded-xl border border-[#EBE8DE] text-sm focus:outline-none focus:border-[#D4AF37]"
+                />
+              </div>
+
+              {/* Filters Group: Calendar Date Filter & Payment Filter */}
+              <div className="flex flex-wrap items-center gap-2.5">
+                {/* Calendar Date Filter (User Request: Admin chooses particular date) */}
+                <div
+                  onClick={(e) => {
+                    if (e.target.tagName !== 'BUTTON' && !e.target.closest('button')) {
+                      const input = document.getElementById('billing-history-calendar-picker');
+                      if (input && typeof input.showPicker === 'function') {
+                        try {
+                          input.showPicker();
+                        } catch {
+                          input.focus();
+                        }
+                      }
+                    }
+                  }}
+                  className="flex items-center gap-2 bg-[#FCFCFA] border border-[#EBE8DE] hover:border-[#D4AF37] focus-within:border-[#D4AF37] transition-all rounded-xl px-3 py-2 shadow-2xs cursor-pointer"
+                  title="Click to choose a particular date"
+                >
+                  <Calendar size={16} className="text-[#C59B27] shrink-0" />
+                  <span className="text-xs font-bold text-[#646875]">Date:</span>
+                  <input
+                    id="billing-history-calendar-picker"
+                    type="date"
+                    value={historyDate}
+                    onChange={(e) => setHistoryDate(e.target.value)}
+                    className="bg-transparent text-xs font-semibold text-[#18191B] focus:outline-none cursor-pointer"
+                  />
+                  {historyDate && (
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setHistoryDate('');
+                      }}
+                      title="Clear date (Show all)"
+                      className="p-1 rounded-md text-[#8C909D] hover:text-[#18191B] hover:bg-[#EAE6D8] transition-colors ml-1"
+                    >
+                      <X size={13} />
+                    </button>
+                  )}
+                </div>
+
+                {/* Payment Filter */}
+                <div className="flex items-center gap-1.5 bg-[#FCFCFA] border border-[#EBE8DE] rounded-xl px-3 py-2 shadow-2xs">
+                  <span className="text-xs font-bold text-[#646875]">Payment:</span>
+                  <select
+                    value={historyPaymentFilter}
+                    onChange={(e) => setHistoryPaymentFilter(e.target.value)}
+                    className="bg-transparent text-xs font-semibold text-[#18191B] focus:outline-none cursor-pointer"
+                  >
+                    <option value="all">All Modes</option>
+                    <option value="UPI">UPI</option>
+                    <option value="Cash">Cash</option>
+                    <option value="Card">Card</option>
+                  </select>
+                </div>
+              </div>
             </div>
 
-            <div className="flex items-center gap-2">
-              <span className="text-xs font-bold text-[#646875]">Payment:</span>
-              <select
-                value={historyPaymentFilter}
-                onChange={(e) => setHistoryPaymentFilter(e.target.value)}
-                className="px-3 py-2 bg-[#FCFCFA] rounded-xl border border-[#EBE8DE] text-xs font-semibold text-[#18191B] focus:border-[#D4AF37]"
-              >
-                <option value="all">All Modes</option>
-                <option value="UPI">UPI</option>
-                <option value="Cash">Cash</option>
-                <option value="Card">Card</option>
-              </select>
+            {/* Filter Summary & Total Count / Revenue Bar */}
+            <div className="flex flex-wrap items-center justify-between gap-3 pt-3 border-t border-[#F0EBE0] text-xs">
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="text-[#646875] font-medium">Invoices:</span>
+                <span className="font-bold text-[#18191B] bg-[#FAF8F2] border border-[#E8E4D5] px-2.5 py-0.5 rounded-lg">
+                  {filteredBills.length} Bill{filteredBills.length === 1 ? '' : 's'}
+                </span>
+
+                {historyDate && (
+                  <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-lg font-bold bg-amber-50 text-amber-900 border border-amber-300">
+                    <Calendar size={12} className="text-amber-700" />
+                    <span>Date: {historyDate}</span>
+                    <button
+                      type="button"
+                      onClick={() => setHistoryDate('')}
+                      className="ml-0.5 hover:text-amber-950 p-0.5 rounded hover:bg-amber-200/50"
+                      title="Clear date filter"
+                    >
+                      <X size={11} />
+                    </button>
+                  </span>
+                )}
+
+                {historyPaymentFilter !== 'all' && (
+                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-lg font-bold bg-blue-50 text-blue-900 border border-blue-200">
+                    <span>{historyPaymentFilter}</span>
+                    <button
+                      type="button"
+                      onClick={() => setHistoryPaymentFilter('all')}
+                      className="ml-1 hover:text-blue-950"
+                    >
+                      <X size={11} />
+                    </button>
+                  </span>
+                )}
+              </div>
+
+              {/* Total Filtered Revenue */}
+              <div className="flex items-center gap-2">
+                <span className="text-[#646875] font-medium">Filtered Total:</span>
+                <span className="font-mono font-extrabold text-[#18191B] text-sm">
+                  ₹{filteredBillsTotal.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                </span>
+              </div>
             </div>
           </div>
 
@@ -1393,7 +1513,24 @@ export default function BillingView() {
                   {filteredBills.length === 0 ? (
                     <tr>
                       <td colSpan={8} className="py-12 text-center text-[#9499A8]">
-                        No billing records found matching your filters.
+                        <Calendar size={28} className="mx-auto mb-2 text-[#C59B27]/40" />
+                        <p className="font-medium text-sm text-[#484A54]">No billing records found</p>
+                        <p className="text-xs text-[#9499A8] mt-1">
+                          {historyDate ? `No bills found for ${historyDate}.` : 'No bills match your current filter criteria.'}
+                        </p>
+                        {(historyDate || historySearch || historyPaymentFilter !== 'all') && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setHistoryDate('');
+                              setHistorySearch('');
+                              setHistoryPaymentFilter('all');
+                            }}
+                            className="mt-3 inline-flex items-center gap-1.5 px-3 py-1.5 bg-[#FAF8F2] border border-[#D4AF37]/40 rounded-xl text-xs font-bold text-[#8A6D1B] hover:bg-[#F3EEDD] transition-colors"
+                          >
+                            Reset All Filters
+                          </button>
+                        )}
                       </td>
                     </tr>
                   ) : (

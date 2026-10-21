@@ -248,23 +248,26 @@ body {
   overflow-y: auto;
 }
 
-/* Print Invoice Styles */
+/* Print Invoice & Pay Slip Styles */
 @media print {
   body * {
     visibility: hidden;
   }
-  #printable-receipt, #printable-receipt * {
+  #printable-receipt, #printable-receipt *,
+  #printable-payslip, #printable-payslip * {
     visibility: visible;
   }
-  #printable-receipt {
+  #printable-receipt, #printable-payslip {
     position: absolute;
     left: 0;
     top: 0;
     width: 100%;
     margin: 0;
-    padding: 20px;
+    padding: 24px;
     box-shadow: none;
     border: none;
+    background: white !important;
+    color: black !important;
   }
   .no-print {
     display: none !important;

@@ -28,7 +28,8 @@ export default function NotificationsView() {
     deleteNotification,
     clearAllNotifications,
     refreshNotifications,
-    setActiveMenu
+    setActiveMenu,
+    setCustomerViewTab
   } = useSaloon();
 
   // Active filter tab: 'all' | 'unread' | 'membership' | 'inactive' | 'billing' | 'system'
@@ -263,7 +264,12 @@ export default function NotificationsView() {
                   <div className="flex items-center gap-2 self-end sm:self-center shrink-0 pt-2 sm:pt-0">
                     {notif.actionTarget && (
                       <button
-                        onClick={() => setActiveMenu(notif.actionTarget)}
+                        onClick={() => {
+                          if (notif.category === 'inactive' && setCustomerViewTab) {
+                            setCustomerViewTab('inactive');
+                          }
+                          setActiveMenu(notif.actionTarget);
+                        }}
                         className="px-3.5 py-1.5 rounded-xl text-xs font-bold bg-[#18191B] text-white hover:bg-[#383F4C] transition-all flex items-center gap-1.5 cursor-pointer shadow-xs"
                       >
                         <span>{notif.actionLabel || 'View'}</span>

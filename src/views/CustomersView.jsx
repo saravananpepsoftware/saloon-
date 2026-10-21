@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import {
   Plus,
@@ -18,7 +18,16 @@ import {
   Edit2,
   Trash2,
   CheckCircle2,
-  AlertTriangle
+  AlertTriangle,
+  UserX,
+  UserCheck,
+  Gift,
+  Clock,
+  Sparkles,
+  MessageSquare,
+  Copy,
+  ExternalLink,
+  Check
 } from 'lucide-react';
 import { useSaloon } from '../context/SaloonContext';
 import Modal from '../components/Modal';
@@ -30,17 +39,35 @@ export default function CustomersView() {
     addCustomer,
     updateCustomer,
     deleteCustomer,
+    reactivateCustomer,
+    markCustomerInactive,
+    toggleCustomerStatus,
+    customerViewTab,
+    setCustomerViewTab,
     setActiveMenu,
     memberships,
     assignMembershipToCustomer,
-    bills
+    bills,
+    inactiveDaysThreshold,
+    setActiveSettingsTab,
+    showToast
   } = useSaloon();
+
+  // Navigation Menu Tab: 'all' | 'inactive'
+  const [activeTab, setActiveTab] = useState(customerViewTab || 'all');
+
+  useEffect(() => {
+    if (customerViewTab) {
+      setActiveTab(customerViewTab);
+    }
+  }, [customerViewTab]);
 
   // Filters
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedGender, setSelectedGender] = useState('All Genders');
+  const [dormancyFilter, setDormancyFilter] = useState('all'); // 'all' | '30plus' | '60plus' | 'novisits'
 
-  // Pagination (5 items per page to match screenshot cleanly)
+  // Pagination (10 items per page to match layout cleanly)
   const [currentPage, setCurrentPage] = useState(1);
   const itemsPerPage = 10;
 
@@ -55,6 +82,8 @@ export default function CustomersView() {
     phone: '',
     email: '',
     gender: 'Male',
+    status: 'active',
+    inactiveReason: '',
     notes: ''
   });
 
@@ -64,6 +93,76 @@ export default function CustomersView() {
   const [isEnrollModalOpen, setIsEnrollModalOpen] = useState(false);
   const [selectedPlanId, setSelectedPlanId] = useState('');
 
+  // Re-engagement Offer Modal State
+  const [offerModalCustomer, setOfferModalCustomer] = useState(null);
+  const [selectedOfferTemplate, setSelectedOfferTemplate] = useState('20off');
+  const [customOfferText, setCustomOfferText] = useState('');
+  const [copied, setCopied] = useState(false);
+
+  // Pre-crafted Win-Back Campaign Offer Templates
+  const offerTemplates = useMemo(() => [
+    {
+      id: '20off',
+      title: '🌟 20% Comeback Privilege',
+      badge: 'High Conversion',
+      getText: (cust) =>
+        `Dear ${cust?.name || 'Valued Client'},\n\nWe miss pampering you at Phoenix Saloon & Spa! As our welcome-back gesture, enjoy an exclusive 20% OFF on any luxury haircut, styling, or revitalizing spa treatment this week.\n\nReserve your VIP slot: +91 98765 00456\nPhoenix Saloon & Spa`
+    },
+    {
+      id: 'hairspa',
+      title: '💆 Complimentary Herbal Hair Spa',
+      badge: 'Client Favorite',
+      getText: (cust) =>
+        `Hello ${cust?.name || 'Valued Client'},\n\nTreat yourself to pure revitalization! Book any signature styling or facial therapy at Phoenix Saloon this week and receive a Complimentary Luxury Herbal Scalp & Hair Spa (Worth ₹1,200).\n\nCall +91 98765 00456 to claim your gift voucher.`
+    },
+    {
+      id: 'vip',
+      title: '👑 VIP Loyalty Welcome-Back',
+      badge: 'VIP Special',
+      getText: (cust) =>
+        `Exclusive invitation for ${cust?.name || 'Valued Client'}:\n\nYour refined grooming experience awaits at Phoenix Saloon. Reconnect with us this month for an exclusive 25% privilege voucher across all master styling services.\n\nPhoenix Saloon — Luxury Salon & Spa`
+    }
+  ], []);
+
+  const handleOpenOfferModal = (cust) => {
+    setOfferModalCustomer(cust);
+    setSelectedOfferTemplate('20off');
+    const tmpl = offerTemplates.find(t => t.id === '20off');
+    setCustomOfferText(tmpl ? tmpl.getText(cust) : '');
+  };
+
+  const handleSelectTemplate = (tmplId) => {
+    setSelectedOfferTemplate(tmplId);
+    const tmpl = offerTemplates.find(t => t.id === tmplId);
+    if (tmpl && offerModalCustomer) {
+      setCustomOfferText(tmpl.getText(offerModalCustomer));
+    }
+  };
+
+  const handleSendWhatsApp = () => {
+    if (!offerModalCustomer) return;
+    const cleanPhone = offerModalCustomer.phone.replace(/[^0-9]/g, '');
+    const phoneWithCountry = cleanPhone.startsWith('91') && cleanPhone.length > 10 ? cleanPhone : `91${cleanPhone.slice(-10)}`;
+    const url = `https://wa.me/${phoneWithCountry}?text=${encodeURIComponent(customOfferText)}`;
+    window.open(url, '_blank');
+  };
+
+  const handleCopyOffer = () => {
+    navigator.clipboard.writeText(customOfferText);
+    setCopied(true);
+    if (showToast) showToast('Offer message copied to clipboard!');
+    setTimeout(() => setCopied(false), 2000);
+  };
+
+  // Helper to calculate days since last visit or registration
+  const getDaysSinceLastVisit = (cust) => {
+    const lastDate = cust.lastVisit || (cust.history && cust.history[0]?.date) || cust.registeredDate;
+    if (!lastDate) return null;
+    const diffTime = Math.abs(new Date('2026-10-21') - new Date(lastDate));
+    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+    return diffDays;
+  };
+
   // Open Add Modal
   const handleOpenAddModal = () => {
     setEditingCustomer(null);
@@ -72,6 +171,8 @@ export default function CustomersView() {
       phone: '',
       email: '',
       gender: 'Male',
+      status: activeTab === 'inactive' ? 'inactive' : 'active',
+      inactiveReason: '',
       notes: ''
     });
     setIsAddModalOpen(true);
@@ -85,6 +186,8 @@ export default function CustomersView() {
       phone: cust.phone || '',
       email: cust.email || '',
       gender: cust.gender && cust.gender !== '-' ? cust.gender : 'Male',
+      status: cust.status || 'active',
+      inactiveReason: cust.inactiveReason || '',
       notes: cust.notes || ''
     });
     setIsAddModalOpen(true);
@@ -101,6 +204,8 @@ export default function CustomersView() {
         phone: formData.phone.trim(),
         email: formData.email.trim(),
         gender: formData.gender,
+        status: formData.status,
+        inactiveReason: formData.status === 'inactive' ? (formData.inactiveReason.trim() || 'Marked inactive') : '',
         notes: formData.notes.trim()
       });
     } else {
@@ -109,6 +214,8 @@ export default function CustomersView() {
         phone: formData.phone.trim(),
         email: formData.email.trim(),
         gender: formData.gender,
+        status: formData.status,
+        inactiveReason: formData.status === 'inactive' ? (formData.inactiveReason.trim() || 'Marked inactive') : '',
         notes: formData.notes.trim()
       });
     }
@@ -125,10 +232,29 @@ export default function CustomersView() {
     }
   };
 
+  // Helper: Determine if customer is considered inactive (either manually marked or exceeds configured threshold days)
+  const thresholdDays = inactiveDaysThreshold || 30;
+  const isCustInactive = (c) => {
+    if (c.status === 'inactive') return true;
+    const days = getDaysSinceLastVisit(c);
+    return days !== null && days >= thresholdDays;
+  };
+
+  // Counts
+  const allCustomersCount = customers.length;
+  const inactiveCustomersCount = customers.filter(isCustInactive).length;
+  const activeCustomersCount = customers.filter(c => !isCustInactive(c)).length;
+  const vipInactiveCount = customers.filter(c => isCustInactive(c) && c.membershipPlan).length;
+
   // Filtered customers list
   const filteredCustomers = useMemo(() => {
     return customers.filter((cust) => {
-      // Search filter (name, phone, email)
+      // 1. Tab filter: Inactive tab only shows inactive customers
+      if (activeTab === 'inactive' && !isCustInactive(cust)) {
+        return false;
+      }
+
+      // 2. Search filter (name, phone, email)
       const q = searchTerm.toLowerCase().trim();
       const matchesSearch =
         !q ||
@@ -136,16 +262,37 @@ export default function CustomersView() {
         (cust.phone && cust.phone.includes(q)) ||
         (cust.email && cust.email.toLowerCase().includes(q));
 
-      // Gender filter
+      if (!matchesSearch) return false;
+
+      // 3. Gender filter
       const matchesGender =
         selectedGender === 'All Genders' ||
         (selectedGender === 'Other'
           ? cust.gender === 'Other' || cust.gender === '-'
           : cust.gender === selectedGender);
 
-      return matchesSearch && matchesGender;
+      if (!matchesGender) return false;
+
+      // 4. Dormancy filter (only when in inactive tab)
+      if (activeTab === 'inactive') {
+        if (dormancyFilter === 'novisits') {
+          return !cust.history || cust.history.length === 0 || !cust.lastVisit;
+        }
+        const days = getDaysSinceLastVisit(cust);
+        if (dormancyFilter === 'threshold') {
+          return days !== null && days >= thresholdDays;
+        }
+        if (dormancyFilter === '30plus') {
+          return days !== null && days >= 30;
+        }
+        if (dormancyFilter === '60plus') {
+          return days !== null && days >= 60;
+        }
+      }
+
+      return true;
     });
-  }, [customers, searchTerm, selectedGender]);
+  }, [customers, activeTab, searchTerm, selectedGender, dormancyFilter, thresholdDays]);
 
   // Paginated customers
   const totalPages = Math.ceil(filteredCustomers.length / itemsPerPage) || 1;
@@ -156,21 +303,37 @@ export default function CustomersView() {
 
   // Handle Export to Excel (CSV format)
   const handleExportExcel = () => {
-    const headers = ['Name', 'Phone', 'Email', 'Gender', 'Registered Date', 'Membership Plan'];
-    const rows = filteredCustomers.map((c) => [
-      `"${c.name || ''}"`,
-      `"${c.phone || ''}"`,
-      `"${c.email || ''}"`,
-      `"${c.gender || '-'}"`,
-      `"${c.registeredDate || ''}"`,
-      `"${c.membershipPlan || 'None'}"`
-    ]);
+    const isInactive = activeTab === 'inactive';
+    const headers = isInactive
+      ? ['Name', 'Phone', 'Email', 'Gender', 'Status', 'Inactivity Reason', 'Last Visit', 'Registered Date', 'Membership Plan']
+      : ['Name', 'Phone', 'Email', 'Gender', 'Status', 'Registered Date', 'Membership Plan'];
+
+    const rows = filteredCustomers.map((c) => {
+      const base = [
+        `"${c.name || ''}"`,
+        `"${c.phone || ''}"`,
+        `"${c.email || ''}"`,
+        `"${c.gender || '-'}"`,
+        `"${c.status || 'active'}"`
+      ];
+      if (isInactive) {
+        base.push(
+          `"${c.inactiveReason || 'No salon visit in 30+ days'}"`,
+          `"${c.lastVisit || 'No visits recorded'}"`
+        );
+      }
+      base.push(
+        `"${c.registeredDate || ''}"`,
+        `"${c.membershipPlan || 'None'}"`
+      );
+      return base;
+    });
 
     const csvContent = 'data:text/csv;charset=utf-8,' + [headers.join(','), ...rows.map(e => e.join(','))].join('\n');
     const encodedUri = encodeURI(csvContent);
     const link = document.createElement('a');
     link.setAttribute('href', encodedUri);
-    link.setAttribute('download', `customers_directory_${new Date().toISOString().split('T')[0]}.csv`);
+    link.setAttribute('download', `${isInactive ? 'inactive_customers_report' : 'customers_directory'}_${new Date().toISOString().split('T')[0]}.csv`);
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
@@ -553,180 +716,351 @@ export default function CustomersView() {
         </div>
       </div>
 
-      {/* 2. Navigation Tabs */}
+      {/* 2. Navigation Tabs (Menu) */}
       <div className="flex items-center gap-8 border-b border-gray-200">
         <button
-          className="pb-3 text-sm font-semibold text-slate-900 border-b-2 border-black"
+          id="tab-all-customers"
+          onClick={() => {
+            setActiveTab('all');
+            setCustomerViewTab?.('all');
+            setCurrentPage(1);
+          }}
+          className={`pb-3 text-sm font-semibold transition-colors flex items-center gap-2 cursor-pointer ${
+            activeTab === 'all'
+              ? 'text-slate-900 border-b-2 border-black'
+              : 'text-gray-500 hover:text-slate-800 border-b-2 border-transparent'
+          }`}
         >
-          All Customers
+          <span>All Customers</span>
+          <span className={`text-xs px-2 py-0.5 rounded-full font-bold ${
+            activeTab === 'all' ? 'bg-slate-900 text-white' : 'bg-gray-100 text-gray-600'
+          }`}>
+            {allCustomersCount}
+          </span>
+        </button>
+
+        <button
+          id="tab-inactive-customers"
+          onClick={() => {
+            setActiveTab('inactive');
+            setCustomerViewTab?.('inactive');
+            setCurrentPage(1);
+          }}
+          className={`pb-3 text-sm font-semibold transition-colors flex items-center gap-2 cursor-pointer ${
+            activeTab === 'inactive'
+              ? 'text-slate-900 border-b-2 border-black'
+              : 'text-gray-500 hover:text-slate-800 border-b-2 border-transparent'
+          }`}
+        >
+          <span>Inactive Customers</span>
+          <span className={`text-xs px-2 py-0.5 rounded-full font-bold ${
+            activeTab === 'inactive' ? 'bg-amber-600 text-white' : 'bg-amber-100 text-amber-800'
+          }`}>
+            {inactiveCustomersCount}
+          </span>
         </button>
       </div>
-          {/* 3. Search and Action Filters Bar */}
-          <div className="bg-white p-4 rounded-2xl border border-gray-200 shadow-xs flex flex-col md:flex-row items-stretch md:items-center justify-between gap-4">
-            {/* Search Input */}
-            <div className="relative flex-1 max-w-xl">
-              <input
-                type="text"
-                placeholder="Search by name, phone, or email..."
-                value={searchTerm}
-                onChange={(e) => {
-                  setSearchTerm(e.target.value);
-                  setCurrentPage(1);
-                }}
-                className="w-full px-4 py-2.5 bg-white rounded-xl border border-gray-200 text-sm focus:outline-none focus:border-slate-400 text-slate-800 placeholder:text-gray-400 transition-all shadow-xs"
-              />
-            </div>
 
-            {/* Right Controls: Gender Select & Export Buttons */}
-            <div className="flex flex-wrap items-center gap-3">
-              {/* Gender Filter */}
-              <select
-                value={selectedGender}
-                onChange={(e) => {
-                  setSelectedGender(e.target.value);
-                  setCurrentPage(1);
-                }}
-                className="px-4 py-2.5 bg-white rounded-xl border border-gray-200 text-sm font-medium text-slate-700 focus:outline-none focus:border-slate-400 cursor-pointer shadow-xs"
-              >
-                <option value="All Genders">All Genders</option>
-                <option value="Male">Male</option>
-                <option value="Female">Female</option>
-                <option value="Other">Other</option>
-              </select>
-
-              {/* Print Button */}
-              <button
-                onClick={handlePrint}
-                className="px-3.5 py-2.5 bg-white hover:bg-gray-50 border border-gray-200 rounded-xl text-sm font-medium text-slate-700 flex items-center gap-1.5 shadow-xs transition-colors"
-                title="Print Customer Directory"
-              >
-                <Printer size={16} className="text-gray-600" />
-                <span>Print</span>
-              </button>
-
-              {/* Excel Export Button */}
-              <button
-                onClick={handleExportExcel}
-                className="px-3.5 py-2.5 bg-emerald-50/70 hover:bg-emerald-100/70 border border-emerald-300 rounded-xl text-sm font-medium text-emerald-700 flex items-center gap-1.5 shadow-xs transition-colors"
-                title="Download Excel / CSV"
-              >
-                <FileSpreadsheet size={16} className="text-emerald-600" />
-                <span>Excel</span>
-              </button>
-
-              {/* PDF Export Button */}
-              <button
-                onClick={handlePrint}
-                className="px-3.5 py-2.5 bg-rose-50/70 hover:bg-rose-100/70 border border-rose-300 rounded-xl text-sm font-medium text-rose-700 flex items-center gap-1.5 shadow-xs transition-colors"
-                title="Save as PDF"
-              >
-                <FileText size={16} className="text-rose-600" />
-                <span>PDF</span>
-              </button>
-            </div>
+      {/* Inactive Threshold Indicator Banner */}
+      {activeTab === 'inactive' && (
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-gradient-to-r from-amber-50 via-[#FFFBEB] to-amber-50/80 border border-amber-200/90 rounded-2xl px-5 py-3 text-xs text-amber-950 shadow-xs">
+          <div className="flex items-center gap-2.5">
+            <span className="w-2.5 h-2.5 rounded-full bg-amber-500 animate-pulse shrink-0" />
+            <span>
+              Inactive Customer Rule: Clients with no visits for <strong className="font-extrabold text-amber-900 underline decoration-amber-400">{thresholdDays} Days</strong> are considered inactive.
+            </span>
           </div>
+          <button
+            onClick={() => {
+              if (setActiveSettingsTab) setActiveSettingsTab('customer-rules');
+              setActiveMenu('settings');
+            }}
+            className="inline-flex items-center gap-1.5 font-bold text-amber-900 hover:text-black bg-amber-200/70 hover:bg-amber-200 px-3 py-1.5 rounded-xl transition-all cursor-pointer w-fit self-start sm:self-auto"
+          >
+            <span>Edit Inactive Days in Settings</span>
+            <ExternalLink size={12} />
+          </button>
+        </div>
+      )}
 
-          {/* 4. Customers Table */}
-          <div className="bg-white rounded-2xl border border-gray-200 shadow-xs overflow-hidden">
-            <div className="overflow-x-auto">
-              <table className="w-full text-left border-collapse">
-                <thead>
-                  <tr className="bg-[#F1F3F5] border-b border-gray-200 text-[11px] uppercase tracking-wider font-bold text-gray-500">
-                    <th className="py-4 px-6 font-semibold">NAME</th>
-                    <th className="py-4 px-6 font-semibold">PHONE</th>
-                    <th className="py-4 px-6 font-semibold">EMAIL</th>
+      {/* 3. Search and Action Filters Bar */}
+      <div className="bg-white p-4 rounded-2xl border border-gray-200 shadow-xs flex flex-col md:flex-row items-stretch md:items-center justify-between gap-4">
+        {/* Search Input */}
+        <div className="relative flex-1 max-w-xl">
+          <input
+            type="text"
+            placeholder={
+              activeTab === 'inactive'
+                ? 'Search inactive by name, phone, or email...'
+                : 'Search by name, phone, or email...'
+            }
+            value={searchTerm}
+            onChange={(e) => {
+              setSearchTerm(e.target.value);
+              setCurrentPage(1);
+            }}
+            className="w-full px-4 py-2.5 bg-white rounded-xl border border-gray-200 text-sm focus:outline-none focus:border-slate-400 text-slate-800 placeholder:text-gray-400 transition-all shadow-xs"
+          />
+        </div>
+
+        {/* Right Controls: Gender Select, Inactivity Filter & Export Buttons */}
+        <div className="flex flex-wrap items-center gap-3">
+          {/* Dormancy Filter (Inactive tab only) */}
+          {activeTab === 'inactive' && (
+            <select
+              value={dormancyFilter}
+              onChange={(e) => {
+                setDormancyFilter(e.target.value);
+                setCurrentPage(1);
+              }}
+              className="px-4 py-2.5 bg-white rounded-xl border border-gray-200 text-sm font-medium text-slate-700 focus:outline-none focus:border-slate-400 cursor-pointer shadow-xs"
+            >
+              <option value="all">All Inactive ({inactiveCustomersCount})</option>
+              <option value="threshold">{thresholdDays}+ Days (Configured Threshold)</option>
+              <option value="60plus">60+ Days Dormant</option>
+              <option value="novisits">No Visits Recorded</option>
+            </select>
+          )}
+
+          {/* Gender Filter */}
+          <select
+            value={selectedGender}
+            onChange={(e) => {
+              setSelectedGender(e.target.value);
+              setCurrentPage(1);
+            }}
+            className="px-4 py-2.5 bg-white rounded-xl border border-gray-200 text-sm font-medium text-slate-700 focus:outline-none focus:border-slate-400 cursor-pointer shadow-xs"
+          >
+            <option value="All Genders">All Genders</option>
+            <option value="Male">Male</option>
+            <option value="Female">Female</option>
+            <option value="Other">Other</option>
+          </select>
+
+          {/* Print Button */}
+          <button
+            onClick={handlePrint}
+            className="px-3.5 py-2.5 bg-white hover:bg-gray-50 border border-gray-200 rounded-xl text-sm font-medium text-slate-700 flex items-center gap-1.5 shadow-xs transition-colors"
+            title={activeTab === 'inactive' ? 'Print Inactive Customers' : 'Print Customer Directory'}
+          >
+            <Printer size={16} className="text-gray-600" />
+            <span>Print</span>
+          </button>
+
+          {/* Excel Export Button */}
+          <button
+            onClick={handleExportExcel}
+            className="px-3.5 py-2.5 bg-emerald-50/70 hover:bg-emerald-100/70 border border-emerald-300 rounded-xl text-sm font-medium text-emerald-700 flex items-center gap-1.5 shadow-xs transition-colors"
+            title="Download Excel / CSV"
+          >
+            <FileSpreadsheet size={16} className="text-emerald-600" />
+            <span>Excel</span>
+          </button>
+
+          {/* PDF Export Button */}
+          <button
+            onClick={handlePrint}
+            className="px-3.5 py-2.5 bg-rose-50/70 hover:bg-rose-100/70 border border-rose-300 rounded-xl text-sm font-medium text-rose-700 flex items-center gap-1.5 shadow-xs transition-colors"
+            title="Save as PDF"
+          >
+            <FileText size={16} className="text-rose-600" />
+            <span>PDF</span>
+          </button>
+        </div>
+      </div>
+
+      {/* 4. Customers Table */}
+      <div className="bg-white rounded-2xl border border-gray-200 shadow-xs overflow-hidden">
+        <div className="overflow-x-auto">
+          <table className="w-full text-left border-collapse">
+            <thead>
+              <tr className="bg-[#F1F3F5] border-b border-gray-200 text-[11px] uppercase tracking-wider font-bold text-gray-500">
+                <th className="py-4 px-6 font-semibold">NAME</th>
+                <th className="py-4 px-6 font-semibold">PHONE</th>
+                <th className="py-4 px-6 font-semibold">EMAIL</th>
+                {activeTab === 'inactive' ? (
+                  <>
+                    <th className="py-4 px-6 font-semibold">LAST VISIT</th>
+                    <th className="py-4 px-6 font-semibold">INACTIVITY REASON</th>
+                  </>
+                ) : (
+                  <>
                     <th className="py-4 px-6 font-semibold">GENDER</th>
-                    <th className="py-4 px-6 font-semibold">ACTIONS</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-gray-100 text-sm">
-                  {paginatedCustomers.length === 0 ? (
-                    <tr>
-                      <td colSpan={5} className="py-12 text-center text-gray-400">
-                        No customers found matching your criteria.
-                      </td>
-                    </tr>
-                  ) : (
-                    paginatedCustomers.map((cust) => {
-                      return (
-                        <tr
-                          key={cust.id}
-                          className="hover:bg-gray-50/80 transition-colors"
-                        >
-                          {/* NAME */}
-                          <td className="py-4 px-6">
+                    <th className="py-4 px-6 font-semibold">STATUS</th>
+                  </>
+                )}
+                <th className="py-4 px-6 font-semibold">ACTIONS</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-gray-100 text-sm">
+              {paginatedCustomers.length === 0 ? (
+                <tr>
+                  <td colSpan={6} className="py-16 text-center text-gray-400">
+                    <div className="flex flex-col items-center justify-center">
+                      <div className="w-14 h-14 rounded-2xl bg-gray-50 flex items-center justify-center text-gray-400 mb-3 border border-gray-100">
+                        {activeTab === 'inactive' ? <UserCheck size={28} className="text-emerald-500" /> : <Users size={28} />}
+                      </div>
+                      <p className="font-bold text-base text-slate-800">
+                        {activeTab === 'inactive'
+                          ? 'No inactive customers found!'
+                          : 'No customers found matching your criteria.'}
+                      </p>
+                      <p className="text-xs text-gray-500 mt-1">
+                        {activeTab === 'inactive'
+                          ? 'All registered clients are active or no dormant records match the current filters.'
+                          : 'Try modifying your search keywords or filter settings.'}
+                      </p>
+                    </div>
+                  </td>
+                </tr>
+              ) : (
+                paginatedCustomers.map((cust) => {
+                  const isInactive = cust.status === 'inactive';
+                  const daysDormant = getDaysSinceLastVisit(cust);
+
+                  return (
+                    <tr
+                      key={cust.id}
+                      className="hover:bg-gray-50/80 transition-colors"
+                    >
+                      {/* NAME */}
+                      <td className="py-4 px-6">
+                        <div className="flex items-center gap-3">
+                          <div className="w-9 h-9 rounded-xl bg-slate-900 text-white flex items-center justify-center font-bold text-xs shrink-0 shadow-xs">
+                            {cust.name.charAt(0).toUpperCase()}
+                          </div>
+                          <div>
                             <button
                               onClick={() => setSelectedCustomer(cust)}
                               className="font-bold text-slate-900 hover:text-black hover:underline text-left block"
                             >
                               {cust.name}
                             </button>
+                            {cust.membershipPlan && (
+                              <span className="inline-flex items-center gap-1 text-[10px] font-bold text-amber-700 mt-0.5">
+                                <Crown size={11} className="text-amber-500" />
+                                <span>{cust.membershipPlan}</span>
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                      </td>
+
+                      {/* PHONE */}
+                      <td className="py-4 px-6 text-slate-700 whitespace-nowrap">
+                        {cust.phone}
+                      </td>
+
+                      {/* EMAIL */}
+                      <td className="py-4 px-6 text-slate-600 text-xs">
+                        {cust.email || '-'}
+                      </td>
+
+                      {/* TAB CONDITIONAL COLUMNS */}
+                      {activeTab === 'inactive' ? (
+                        <>
+                          {/* LAST VISIT */}
+                          <td className="py-4 px-6 whitespace-nowrap text-xs">
+                            <span className="font-semibold text-slate-800 block">
+                              {cust.lastVisit || 'No visits recorded'}
+                            </span>
+                            {daysDormant !== null ? (
+                              <span className="inline-block mt-0.5 px-2 py-0.5 rounded-md text-[10px] font-bold bg-amber-100/70 text-amber-900 font-mono">
+                                {daysDormant} days dormant
+                              </span>
+                            ) : (
+                              <span className="inline-block mt-0.5 px-2 py-0.5 rounded-md text-[10px] font-medium bg-gray-100 text-gray-600">
+                                Never visited
+                              </span>
+                            )}
                           </td>
 
-                          {/* PHONE */}
-                          <td className="py-4 px-6 text-slate-700">
-                            {cust.phone}
+                          {/* INACTIVITY REASON */}
+                          <td className="py-4 px-6 text-xs text-slate-700">
+                            <div className="flex flex-col gap-1">
+                              <span className="inline-flex items-center gap-1 w-fit px-2 py-0.5 rounded-md text-[10px] font-bold uppercase tracking-wider bg-amber-50 text-amber-800 border border-amber-200">
+                                <UserX size={10} /> Inactive
+                              </span>
+                              <span className="text-gray-500 text-[11px] leading-tight">
+                                {cust.inactiveReason || 'No salon visit in 30+ days'}
+                              </span>
+                            </div>
                           </td>
-
-                          {/* EMAIL */}
-                          <td className="py-4 px-6 text-slate-600">
-                            {cust.email || '-'}
-                          </td>
-
+                        </>
+                      ) : (
+                        <>
                           {/* GENDER */}
-                          <td className="py-4 px-6 text-slate-700">
+                          <td className="py-4 px-6 text-slate-700 text-xs">
                             {cust.gender || '-'}
                           </td>
 
-                          {/* ACTIONS: Edit & Delete */}
-                          <td className="py-4 px-6">
-                            <div className="flex items-center gap-3">
-                              <button
-                                onClick={() => handleOpenEditModal(cust)}
-                                className="text-sm font-medium text-slate-800 hover:text-black hover:underline cursor-pointer"
-                              >
-                                Edit
-                              </button>
-                              <button
-                                onClick={() => setDeletingCustomerId(cust.id)}
-                                className="text-sm font-medium text-slate-800 hover:text-rose-600 hover:underline cursor-pointer"
-                              >
-                                Delete
-                              </button>
-                            </div>
+                          {/* STATUS */}
+                          <td className="py-4 px-6 whitespace-nowrap">
+                            {isInactive ? (
+                              <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold bg-amber-50 text-amber-800 border border-amber-200">
+                                <span className="w-1.5 h-1.5 rounded-full bg-amber-500" />
+                                <span>Inactive</span>
+                              </span>
+                            ) : (
+                              <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold bg-emerald-50 text-emerald-800 border border-emerald-200">
+                                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
+                                <span>Active</span>
+                              </span>
+                            )}
                           </td>
-                        </tr>
-                      );
-                    })
-                  )}
-                </tbody>
-              </table>
-            </div>
-          </div>
+                        </>
+                      )}
 
-          {/* 5. Pagination Bar */}
-          <div className="flex items-center justify-between pt-2">
-            <button
-              onClick={() => setCurrentPage(prev => Math.max(prev - 1, 1))}
-              disabled={currentPage === 1}
-              className="px-4 py-2 text-sm font-medium text-slate-700 bg-white border border-gray-200 rounded-xl hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed shadow-xs transition-colors"
-            >
-              Previous
-            </button>
+                      {/* ACTIONS: Edit & Delete */}
+                      <td className="py-4 px-6 whitespace-nowrap">
+                        <div className="flex items-center gap-3">
+                          <button
+                            onClick={() => handleOpenEditModal(cust)}
+                            className="text-sm font-medium text-slate-800 hover:text-black hover:underline cursor-pointer"
+                          >
+                            Edit
+                          </button>
+                          <button
+                            onClick={() => setDeletingCustomerId(cust.id)}
+                            className="text-sm font-medium text-slate-800 hover:text-rose-600 hover:underline cursor-pointer"
+                          >
+                            Delete
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })
+              )}
+            </tbody>
+          </table>
+        </div>
+      </div>
 
-            <span className="text-xs text-gray-500 font-medium">
-              Showing {paginatedCustomers.length > 0 ? (currentPage - 1) * itemsPerPage + 1 : 0} to{' '}
-              {Math.min(currentPage * itemsPerPage, filteredCustomers.length)} of {filteredCustomers.length} clients
-            </span>
+      {/* 5. Pagination Bar */}
+      <div className="flex items-center justify-between pt-2">
+        <button
+          onClick={() => setCurrentPage(prev => Math.max(prev - 1, 1))}
+          disabled={currentPage === 1}
+          className="px-4 py-2 text-sm font-medium text-slate-700 bg-white border border-gray-200 rounded-xl hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed shadow-xs transition-colors"
+        >
+          Previous
+        </button>
 
-            <button
-              onClick={() => setCurrentPage(prev => Math.min(prev + 1, totalPages))}
-              disabled={currentPage >= totalPages}
-              className="px-4 py-2 text-sm font-medium text-slate-700 bg-white border border-gray-200 rounded-xl hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed shadow-xs transition-colors"
-            >
-              Next
-            </button>
-          </div>
+        <span className="text-xs text-gray-500 font-medium">
+          Showing {paginatedCustomers.length > 0 ? (currentPage - 1) * itemsPerPage + 1 : 0} to{' '}
+          {Math.min(currentPage * itemsPerPage, filteredCustomers.length)} of {filteredCustomers.length}{' '}
+          {activeTab === 'inactive' ? 'dormant clients' : 'clients'}
+        </span>
+
+        <button
+          onClick={() => setCurrentPage(prev => Math.min(prev + 1, totalPages))}
+          disabled={currentPage >= totalPages}
+          className="px-4 py-2 text-sm font-medium text-slate-700 bg-white border border-gray-200 rounded-xl hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed shadow-xs transition-colors"
+        >
+          Next
+        </button>
+      </div>
 
       {/* 6. Portaled Add / Edit Customer Modal */}
       {isAddModalOpen &&
@@ -818,6 +1152,38 @@ export default function CustomersView() {
                   />
                 </div>
 
+                {/* Client Status & Inactivity Reason */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-xs font-bold uppercase tracking-wider text-gray-600 mb-1.5">
+                      Client Status
+                    </label>
+                    <select
+                      value={formData.status}
+                      onChange={(e) => setFormData(prev => ({ ...prev, status: e.target.value }))}
+                      className="w-full px-4 py-2.5 rounded-xl border border-gray-200 text-sm text-slate-900 focus:outline-none focus:border-slate-800 shadow-xs bg-white"
+                    >
+                      <option value="active">Active Client</option>
+                      <option value="inactive">Inactive / Dormant</option>
+                    </select>
+                  </div>
+
+                  {formData.status === 'inactive' && (
+                    <div>
+                      <label className="block text-xs font-bold uppercase tracking-wider text-gray-600 mb-1.5">
+                        Inactivity Reason
+                      </label>
+                      <input
+                        type="text"
+                        placeholder="e.g. No visit in 30+ days"
+                        value={formData.inactiveReason}
+                        onChange={(e) => setFormData(prev => ({ ...prev, inactiveReason: e.target.value }))}
+                        className="w-full px-4 py-2.5 rounded-xl border border-gray-200 text-sm text-slate-900 focus:outline-none focus:border-slate-800 shadow-xs"
+                      />
+                    </div>
+                  )}
+                </div>
+
                 {/* Styling Notes */}
                 <div>
                   <label className="block text-xs font-bold uppercase tracking-wider text-gray-600 mb-1.5">
@@ -886,6 +1252,8 @@ export default function CustomersView() {
           </div>,
           document.body
         )}
+
+
 
       {/* Invoice Modal for receipt view if clicked */}
       {selectedBillForInvoice && (

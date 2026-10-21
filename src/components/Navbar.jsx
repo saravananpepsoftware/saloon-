@@ -15,6 +15,7 @@ export default function Navbar({ setMobileOpen }) {
       case 'dashboard': return 'Dashboard Overview';
       case 'customers': return 'CUSTOMERS';
       case 'employees': return 'Employee & Attendance Hub';
+      case 'payroll': return 'Payroll & Attendance Management';
       case 'services-products': return 'Services & Retail Products';
       case 'memberships': return 'Membership Management';
       case 'packages': return 'Salon Combo Packages';

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   Printer,
   Store,
@@ -19,7 +19,13 @@ import {
   Mail,
   MapPin,
   RefreshCw,
-  ExternalLink
+  ExternalLink,
+  Users,
+  UserX,
+  Clock,
+  AlertTriangle,
+  Minus,
+  Plus
 } from 'lucide-react';
 import { useSaloon } from '../context/SaloonContext';
 
@@ -27,12 +33,29 @@ export default function SettingsView() {
   const {
     receiptSettings,
     updateReceiptSettings,
+    inactiveDaysThreshold,
+    updateInactiveDaysThreshold,
+    customers,
+    activeSettingsTab,
+    setActiveSettingsTab,
+    setActiveMenu,
+    setCustomerViewTab,
     showToast
   } = useSaloon();
 
   // Active settings sub-navigation tab
-  // Default to 'receipt' as requested in screenshot!
-  const [activeTab, setActiveTab] = useState('receipt');
+  const [activeTab, setActiveTab] = useState(activeSettingsTab || 'receipt');
+
+  // Draft state for Inactive Customer Threshold Days
+  const [draftInactiveDays, setDraftInactiveDays] = useState(inactiveDaysThreshold || 30);
+
+  useEffect(() => {
+    if (activeSettingsTab) setActiveTab(activeSettingsTab);
+  }, [activeSettingsTab]);
+
+  useEffect(() => {
+    setDraftInactiveDays(inactiveDaysThreshold || 30);
+  }, [inactiveDaysThreshold]);
 
   // Local draft state for Receipt Configurations
   const [formConfig, setFormConfig] = useState({
@@ -156,6 +179,7 @@ export default function SettingsView() {
   // Nav items on the left side
   const settingsNavItems = [
     { id: 'profile', label: 'Parlour Profile', icon: Building2 },
+    { id: 'customer-rules', label: 'Inactive Customer Rules', icon: Users, badge: `${inactiveDaysThreshold || 30}d` },
     { id: 'theme', label: 'System Theme Color', icon: Palette },
     { id: 'receipt', label: 'Receipt & Thermal Printing', icon: Printer, isHighlight: true },
     { id: 'taxes', label: 'Invoice & Taxes', icon: FileText }
@@ -183,20 +207,32 @@ export default function SettingsView() {
               <button
                 key={item.id}
                 id={`btn-settings-${item.id}`}
-                onClick={() => setActiveTab(item.id)}
-                className={`w-full flex items-center gap-3 px-3.5 py-3 rounded-xl text-xs sm:text-sm font-semibold transition-all duration-200 cursor-pointer ${
+                onClick={() => {
+                  setActiveTab(item.id);
+                  if (setActiveSettingsTab) setActiveSettingsTab(item.id);
+                }}
+                className={`w-full flex items-center justify-between gap-3 px-3.5 py-3 rounded-xl text-xs sm:text-sm font-semibold transition-all duration-200 cursor-pointer ${
                   isActive
                     ? 'bg-[#18191B] text-[#D4AF37] font-bold shadow-sm'
                     : 'text-[#646875] hover:text-[#18191B] hover:bg-[#FAF8F2]'
                 }`}
               >
-                <Icon
-                  size={18}
-                  className={`shrink-0 ${
-                    isActive ? 'text-[#D4AF37]' : 'text-[#9499A8]'
-                  }`}
-                />
-                <span className="truncate text-left leading-tight">{item.label}</span>
+                <div className="flex items-center gap-3 min-w-0">
+                  <Icon
+                    size={18}
+                    className={`shrink-0 ${
+                      isActive ? 'text-[#D4AF37]' : 'text-[#9499A8]'
+                    }`}
+                  />
+                  <span className="truncate text-left leading-tight">{item.label}</span>
+                </div>
+                {item.badge && (
+                  <span className={`text-[10px] font-mono px-2 py-0.5 rounded-full font-bold shrink-0 ${
+                    isActive ? 'bg-[#D4AF37]/25 text-[#D4AF37]' : 'bg-[#EAE6D8] text-[#646875]'
+                  }`}>
+                    {item.badge}
+                  </span>
+                )}
               </button>
             );
           })}
@@ -650,11 +686,133 @@ export default function SettingsView() {
 
               <div className="pt-2 flex justify-end">
                 <button
-                  onClick={() => showToast('Parlour profile saved!')}
+                  onClick={() => {
+                    showToast('Parlour profile saved!');
+                  }}
                   className="gold-gradient-btn px-5 py-2 rounded-xl text-xs font-bold"
                 >
                   Save Profile
                 </button>
+              </div>
+            </div>
+          )}
+
+          {/* ========================================================
+              TAB: INACTIVE CUSTOMER RULES (Requested feature)
+          ======================================================== */}
+          {activeTab === 'customer-rules' && (
+            <div className="space-y-6">
+              {/* Header Box */}
+              <div className="bg-white p-6 rounded-2xl border border-[#EFECE1] shadow-sm flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                <div>
+                  <div className="flex items-center gap-2 text-xs font-bold text-[#C59B27] uppercase tracking-wider mb-1">
+                    <UserX size={14} />
+                    <span>Customer Retention &amp; CRM Policies</span>
+                  </div>
+                  <h2 className="text-xl sm:text-2xl font-bold text-[#18191B]" style={{ fontFamily: 'var(--font-heading)' }}>
+                    Inactive Customer Threshold Settings
+                  </h2>
+                  <p className="text-xs sm:text-sm text-[#646875] mt-1">
+                    Configure after how many days without a visit or appointment a customer is considered inactive.
+                  </p>
+                </div>
+
+                <button
+                  id="btn-save-inactive-threshold"
+                  onClick={() => updateInactiveDaysThreshold(draftInactiveDays)}
+                  className="gold-gradient-btn px-5 py-2.5 rounded-xl text-xs font-bold shadow-md flex items-center gap-1.5 cursor-pointer self-start sm:self-auto active:scale-95 transition-all"
+                >
+                  <Save size={15} />
+                  <span>Save Inactivity Rule</span>
+                </button>
+              </div>
+
+              {/* Threshold Configuration Card */}
+              <div className="bg-white p-6 rounded-2xl border border-[#EFECE1] shadow-sm space-y-6 max-w-3xl">
+                <div>
+                  <label className="block text-sm font-bold text-[#18191B] mb-1">
+                    Dormancy Period (Days without visit)
+                  </label>
+                  <p className="text-xs text-[#646875]">
+                    Clients with no visits for longer than this duration will be categorized under the <strong className="text-[#18191B]">Inactive Customers</strong> menu tab.
+                  </p>
+                </div>
+
+                {/* Stepper & Number Field */}
+                <div className="flex items-center gap-3">
+                  <button
+                    type="button"
+                    onClick={() => setDraftInactiveDays(prev => Math.max(1, prev - 5))}
+                    className="w-12 h-12 rounded-xl bg-[#F4F1E8] hover:bg-[#EAE6D8] text-[#18191B] font-bold text-lg flex items-center justify-center transition-all border border-[#E2DDCB] active:scale-95 cursor-pointer"
+                    title="Decrease by 5 days"
+                  >
+                    <Minus size={18} />
+                  </button>
+
+                  <div className="relative flex-1">
+                    <input
+                      id="input-inactive-days"
+                      type="number"
+                      min="1"
+                      max="365"
+                      value={draftInactiveDays}
+                      onChange={(e) => setDraftInactiveDays(Math.max(1, parseInt(e.target.value, 10) || 1))}
+                      className="w-full text-center text-2xl font-black font-mono py-2.5 px-4 rounded-xl border-2 border-[#D4AF37] bg-[#FAF8F2] text-[#18191B] focus:outline-none focus:ring-2 focus:ring-[#D4AF37]/50 shadow-inner"
+                    />
+                    <span className="absolute right-4 top-1/2 -translate-y-1/2 text-xs font-bold uppercase tracking-wider text-[#9499A8] pointer-events-none">
+                      Days
+                    </span>
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={() => setDraftInactiveDays(prev => prev + 5)}
+                    className="w-12 h-12 rounded-xl bg-[#F4F1E8] hover:bg-[#EAE6D8] text-[#18191B] font-bold text-lg flex items-center justify-center transition-all border border-[#E2DDCB] active:scale-95 cursor-pointer"
+                    title="Increase by 5 days"
+                  >
+                    <Plus size={18} />
+                  </button>
+                </div>
+
+                {/* Quick Preset Buttons */}
+                <div className="space-y-2 pt-2 border-t border-[#F4F1E8]">
+                  <span className="text-xs font-bold text-[#646875] uppercase tracking-wider block">
+                    Recommended Salon Presets:
+                  </span>
+                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                    {[
+                      { days: 15, label: '15 Days', desc: 'High-frequency cycle' },
+                      { days: 30, label: '30 Days', desc: 'Standard monthly (Default)' },
+                      { days: 45, label: '45 Days', desc: 'Extended grace period' },
+                      { days: 60, label: '60 Days', desc: 'High dormancy risk' },
+                      { days: 90, label: '90 Days', desc: 'Quarterly review' }
+                    ].map((preset) => (
+                      <button
+                        key={preset.days}
+                        type="button"
+                        onClick={() => setDraftInactiveDays(preset.days)}
+                        className={`p-3 rounded-xl border text-left transition-all cursor-pointer ${
+                          draftInactiveDays === preset.days
+                            ? 'bg-[#FAF8F2] border-[#D4AF37] ring-1 ring-[#D4AF37] shadow-xs'
+                            : 'bg-[#FCFCFA] border-[#E8E4D5] hover:border-[#D4AF37]/50 hover:bg-[#FAF8F2]'
+                        }`}
+                      >
+                        <span className="font-bold text-xs text-[#18191B] block">{preset.label}</span>
+                        <span className="text-[10px] text-[#8C909D] leading-tight block mt-0.5">{preset.desc}</span>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="pt-3 border-t border-[#F4F1E8] flex justify-end">
+                  <button
+                    onClick={() => updateInactiveDaysThreshold(draftInactiveDays)}
+                    className="gold-gradient-btn px-6 py-2.5 rounded-xl text-xs font-bold shadow-md flex items-center gap-1.5 cursor-pointer active:scale-95 transition-all"
+                  >
+                    <Save size={14} />
+                    <span>Save Inactive Threshold ({draftInactiveDays} Days)</span>
+                  </button>
+                </div>
               </div>
             </div>
           )}
